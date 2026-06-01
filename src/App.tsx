@@ -64,6 +64,7 @@ export default function App() {
       { id: Math.random().toString(36).substr(2, 9), type: 'panel', x: 200, y: 150, width: 400, height: 220, name: 'Main Background', props: { texture: 'textures/gui/new_bg.png' } },
       { id: Math.random().toString(36).substr(2, 9), type: 'button', x: 575, y: 155, width: 20, height: 20, name: 'Close Button', props: { text: 'X', action: 'close_gui' } }
     ]);
+    setSelectedFile('README.txt');
     setAppPhase('builder');
   };
 
@@ -143,31 +144,57 @@ export default function App() {
   };
 
   const generateToggleJSON = () => {
-     return `{
-  "namespace": "hud",
-  "custom_toggle_button": {
-    "type": "button",
+     return `// ADD THIS INTO THE INVENTORY SCREEN TO TOGGLE YOUR GUI
+// Place this inside the 'controls' array of 'inventory_screen.json'
+{
+  "custom_gui_toggle@common_toggles.light_text_toggle": {
     "size": [100, 20],
-    "anchor_from": "${toggleLocation === 'inventory' ? 'bottom_middle' : 'top_right'}",
-    "anchor_to": "${toggleLocation === 'inventory' ? 'bottom_middle' : 'top_right'}",
-    "offset": [0, -20],
-    "default_control": "default",
-    "hover_control": "hover",
-    "pressed_control": "pressed",
+    "anchor_from": "top_right",
+    "anchor_to": "top_right",
+    "offset": [-10, 10],
+    "$button_text": "label.open_custom_gui",
+    "$toggle_name": "custom_gui_toggle_state",
+    "$toggle_state_binding_name": "#is_custom_gui_open",
+    "$toggle_group_default_selected": 0
+  }
+},
+{
+  "custom_gui_container": {
+    "type": "panel",
     "controls": [
-      { "default": { "type": "image", "texture": "textures/ui/button_default" } },
-      { "hover": { "type": "image", "texture": "textures/ui/button_hover" } },
-      { "pressed": { "type": "image", "texture": "textures/ui/button_pressed" } }
-    ],
-    "button_mappings": [
       {
-        "from_button_id": "button.menu_select",
-        "to_button_id": "button.menu_select",
-        "mapping_type": "pressed"
+        "my_gui@attribute_levelup.main_screen": {}
+      }
+    ],
+    "bindings": [
+      {
+        "binding_type": "view",
+        "source_control_name": "custom_gui_toggle",
+        "source_property_name": "(#toggle_state)",
+        "target_property_name": "#visible"
       }
     ]
   }
 }`;
+  };
+
+  const getReadmeText = () => {
+     return `==========================================
+CRITICAL BEDROCK UI MODDING RULES
+==========================================
+
+Why didn't your hud_screen button or keybind work?
+1. MOUSE CURSOR: On PC, you cannot click the HUD because your mouse is locked to the camera. You MUST place your button inside a screen where the cursor is active (like the Inventory Screen).
+2. FAKE KEYBINDS: Bedrock JSON UI does not allow binding custom keys (like "H") or making up actions (like "button.open_custom_gui"). If the game doesn't natively know what doing that means, it throws an error in the log and breaks.
+3. STANDALONE SCREENS: You cannot just make a new file called "my_screen.json" and expect it to magically open. The game only knows vanilla screens.
+
+THE SOLUTION (INJECTION):
+To make your GUI work purely with JSON:
+1. Go to Bridge and copy the vanilla 'inventory_screen.json' into your pack.
+2. In 'inventory_screen.json', find the main 'controls' array where everything else is loaded.
+3. Paste the contents from the generated 'RP/ui/inventory_screen.json (Injection)' file at the bottom of that array.
+4. What this does: It adds a "Toggle" button to your inventory. When you click that toggle button, a UI "view" binding automatically checks if it was pressed, and reveals your custom GUI!
+`;
   };
 
   const handlePointerDown = (e: React.PointerEvent, id: string) => {
@@ -298,7 +325,8 @@ export default function App() {
            <div className="flex-1 flex flex-col items-center justify-center bg-[#121212] p-8">
               <div className="max-w-md w-full bg-[#212121] border border-[#333] rounded shadow-2xl p-6">
                  <h2 className="text-xl font-bold uppercase tracking-wider text-white mb-2">GUI Configuration</h2>
-                 <p className="text-[#888] text-sm mb-6">Before you start building, configure the toggle button that players will use to open your custom GUI.</p>
+                 <p className="text-[#aa4444] text-xs font-bold mb-2 uppercase tracking-wide">⚠️ Bedrock Limitation</p>
+                 <p className="text-[#888] text-sm mb-6">On PC, the mouse cursor is locked inside the HUD. You also cannot create "fake" keybinds. Because of this, custom GUIs must be injected into an existing screen that uses a cursor (like the Inventory Screen).</p>
                  
                  <div className="flex flex-col gap-4 mb-8">
                     <div className="flex flex-col gap-1.5">
@@ -308,13 +336,12 @@ export default function App() {
                           onChange={(e) => setToggleLocation(e.target.value as 'inventory'|'hud')}
                           className="bg-[#111] border border-[#333] px-3 py-2 rounded text-white text-sm outline-none focus:border-blue-500"
                        >
-                          <option value="inventory">Inventory Screen</option>
-                          <option value="hud">Player HUD (Regular POV)</option>
+                          <option value="inventory">Inventory Screen (Recommended)</option>
                        </select>
                     </div>
 
                     <div className="flex flex-col gap-1.5">
-                       <label className="text-[11px] font-bold text-[#aaa] uppercase tracking-wider">Button Name</label>
+                       <label className="text-[11px] font-bold text-[#aaa] uppercase tracking-wider">Toggle Button Name</label>
                        <input 
                           type="text" 
                           value={toggleName} 
@@ -322,19 +349,6 @@ export default function App() {
                           placeholder="e.g. Open Stats"
                           className="bg-[#111] border border-[#333] px-3 py-2 rounded text-white text-sm outline-none focus:border-blue-500"
                        />
-                    </div>
-
-                     <div className="flex flex-col gap-1.5">
-                       <label className="text-[11px] font-bold text-[#aaa] uppercase tracking-wider">Open Keybind (Optional)</label>
-                       <input 
-                          type="text" 
-                          value={toggleKeybind} 
-                          onChange={(e) => setToggleKeybind(e.target.value.toUpperCase().charAt(0))}
-                          maxLength={1}
-                          placeholder="e.g. H"
-                          className="bg-[#111] border border-[#333] px-3 py-2 rounded text-white text-sm outline-none focus:border-blue-500 uppercase"
-                       />
-                       <span className="text-[10px] text-[#555]">This adds [{toggleKeybind || '?'}] to your button label.</span>
                     </div>
                  </div>
 
@@ -712,18 +726,25 @@ export default function App() {
                </div>
                <div className="flex-1 overflow-y-auto p-2">
                   <div 
+                     onClick={() => setSelectedFile('README.txt')}
+                     className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === 'README.txt' ? 'bg-[#3498db]/20 text-blue-400' : 'text-[#aaa] hover:bg-[#333]'}`}
+                  >
+                     <FileJson className="w-3.5 h-3.5" />
+                     <span>README.txt</span>
+                  </div>
+                  <div 
                      onClick={() => setSelectedFile('RP/ui/attribute_levelup.json')}
                      className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === 'RP/ui/attribute_levelup.json' ? 'bg-[#3498db]/20 text-blue-400' : 'text-[#aaa] hover:bg-[#333]'}`}
                   >
                      <FileJson className="w-3.5 h-3.5" />
-                     <span>RP/ui/attribute_levelup.json</span>
+                     <span>RP/ui/attribute_levelup.json (Custom GUI)</span>
                   </div>
                   <div 
-                     onClick={() => setSelectedFile('RP/ui/hud_screen.json')}
-                     className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === 'RP/ui/hud_screen.json' ? 'bg-[#3498db]/20 text-blue-400' : 'text-[#aaa] hover:bg-[#333]'}`}
+                     onClick={() => setSelectedFile('RP/ui/inventory_screen.json')}
+                     className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === 'RP/ui/inventory_screen.json' ? 'bg-[#3498db]/20 text-blue-400' : 'text-[#aaa] hover:bg-[#333]'}`}
                   >
                      <FileJson className="w-3.5 h-3.5" />
-                     <span>RP/ui/hud_screen.json</span>
+                     <span>RP/ui/inventory_screen.json (Injection)</span>
                   </div>
                   <div 
                      onClick={() => setSelectedFile('RP/texts/en_US.lang')}
@@ -736,11 +757,12 @@ export default function App() {
                <div className="p-4 border-t border-[#333]">
                  <button onClick={() => {
                      let text = "";
+                     if (selectedFile === 'README.txt') text = getReadmeText();
                      if (selectedFile === 'RP/ui/attribute_levelup.json') text = generateBridgeJSON();
-                     if (selectedFile === 'RP/ui/hud_screen.json') text = generateToggleJSON();
+                     if (selectedFile === 'RP/ui/inventory_screen.json') text = generateToggleJSON();
                      if (selectedFile === 'RP/texts/en_US.lang') {
                         const labels = elements.filter(e=>e.type==='label').map(e => `label.${e.name.replace(/ /g, '_').toLowerCase()} = ${e.props.text}`).join('\n');
-                        const toggleStr = `button.open_custom_gui = ${toggleName} [${toggleKeybind || 'Touch'}]`;
+                        const toggleStr = `label.open_custom_gui = ${toggleName}`;
                         text = `## Text bindings for attribute_levelup.json\n\n${toggleStr}\n${labels}`;
                      }
                      navigator.clipboard.writeText(text);
@@ -756,11 +778,12 @@ export default function App() {
                </div>
                <div className="flex-1 p-4 overflow-auto custom-scrollbar">
                   <pre className="text-[12px] font-mono text-[#dcdcaa] leading-relaxed">
+                     {selectedFile === 'README.txt' && getReadmeText()}
                      {selectedFile === 'RP/ui/attribute_levelup.json' && generateBridgeJSON()}
-                     {selectedFile === 'RP/ui/hud_screen.json' && generateToggleJSON()}
+                     {selectedFile === 'RP/ui/inventory_screen.json' && generateToggleJSON()}
                      {selectedFile === 'RP/texts/en_US.lang' && (
                         `## Text bindings for attribute_levelup.json\n\n` + 
-                        `button.open_custom_gui = ${toggleName} [${toggleKeybind || 'Touch'}]\n` +
+                        `label.open_custom_gui = ${toggleName}\n` +
                         `${elements.filter(e=>e.type==='label').map(e => `label.${e.name.replace(/ /g, '_').toLowerCase()} = ${e.props.text}`).join('\n')}`
                      )}
                   </pre>
