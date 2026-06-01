@@ -161,9 +161,9 @@ export default function App() {
 
   const generateToggleJSON = () => {
     return `{
-  "namespace": "inventory",
+  "namespace": "crafting",
 
-  "inventory_screen": {
+  "recipe_inventory_screen_content": {
     "modifications": [
       {
         "array_name": "controls",
@@ -175,7 +175,7 @@ export default function App() {
               "anchor_from": "top_right",
               "anchor_to": "top_right",
               "offset": [-10, 10],
-              "layer": 50,
+              "layer": 300,
               "$button_text": "label.open_custom_gui",
               "$toggle_name": "custom_gui_toggle_state",
               "$toggle_state_binding_name": "#is_custom_gui_open",
@@ -185,7 +185,7 @@ export default function App() {
           {
             "custom_gui_container": {
               "type": "panel",
-              "layer": 55,
+              "layer": 350,
               "controls": [
                 {
                   "my_gui@attribute_levelup.main_screen": {}
@@ -222,7 +222,7 @@ export default function App() {
             "${el.name.replace(/ /g, '_').toLowerCase()}@common_toggles.light_text_toggle": {
               "size": [${el.width}, ${el.height}],
               "offset": [${el.x}, ${el.y}],
-              "layer": 50,
+              "layer": 300,
               "anchor_from": "top_left",
               "anchor_to": "top_left",
               "$button_text": "label.${el.name.replace(/ /g, '_').toLowerCase()}",
@@ -239,7 +239,7 @@ export default function App() {
               "type": "${el.type}",
               "size": [${el.width}, ${el.height}],
               "offset": [${el.x}, ${el.y}],
-              "layer": 50,
+              "layer": 300,
               "anchor_from": "top_left",
               "anchor_to": "top_left"${el.type === 'label' ? `,\n              "text": "${el.props.text || ''}"` : ''}${el.props.texture ? `,\n              "texture": "${el.props.texture}"` : ''}${extraCode ? ',\n              ' + extraCode.replace(/\n      /g, '\n              ') : ''}
             }
@@ -252,7 +252,7 @@ export default function App() {
     return `{
   "namespace": "book",
 
-  "book_screen": {
+  "book_screen_content": {
     "modifications": [
       {
         "array_name": "controls",
@@ -261,7 +261,7 @@ export default function App() {
           {
             "custom_book_overlay_container": {
               "type": "panel",
-              "layer": 55,
+              "layer": 300,
               "controls": [${controls}
               ]
             }
@@ -269,7 +269,7 @@ export default function App() {
           {
             "custom_gui_container": {
               "type": "panel",
-              "layer": 60,
+              "layer": 350,
               "controls": [
                 {
                   "my_gui@attribute_levelup.main_screen": {}
