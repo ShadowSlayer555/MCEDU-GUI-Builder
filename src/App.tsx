@@ -163,7 +163,7 @@ export default function App() {
     return `{
   "namespace": "crafting",
 
-  "recipe_inventory_screen_content@crafting.recipe_inventory_screen_content": {
+  "recipe_inventory_screen_content": {
     "modifications": [
       {
         "array_name": "controls",
@@ -252,7 +252,7 @@ export default function App() {
     return `{
   "namespace": "book",
 
-  "book_screen_content@book.book_screen_content": {
+  "book_screen_content": {
     "modifications": [
       {
         "array_name": "controls",
@@ -292,6 +292,15 @@ export default function App() {
 }`;
   };
 
+  const generateUIDefsJSON = () => {
+    return `{
+  "ui_defs": [
+    "ui/attribute_levelup.json",
+    "ui/${toggleLocation === 'book' ? 'custom_book_injection.json' : 'custom_inventory_injection.json'}"
+  ]
+}`;
+  };
+
   const getReadmeText = () => {
     const filename = toggleLocation === 'book' ? 'custom_book_injection.json' : 'custom_inventory_injection.json';
     const targetScreen = toggleLocation === 'book' ? 'book_screen.json' : 'inventory_screen.json';
@@ -317,7 +326,13 @@ STEP 2: ADD IT TO BRIDGE SAFELY
 3. Bridge IDE will automatically detect this new UI file and add it to 'ui_defs.json' behind the scenes.
 4. Because the file has a different name, the game loads the full real screen first, then safely applies your modification on top!
 
-STEP 3: ADD YOUR CUSTOM GUI FILE
+STEP 3: REGISTER IN _ui_defs.json
+1. Bedrock UI files will NOT load automatically! 
+2. You must open or create 'RP/ui/_ui_defs.json'
+3. Copy the 'RP/ui/_ui_defs.json' file contents from this app and paste them!
+4. *NOTE:* Bridge IDE may show yellow tooltips ("expected object" / "matched more than one schema"). These are just Bridge schema bugs! If it's in '_ui_defs.json', it will work perfectly in-game.
+
+STEP 4: ADD YOUR CUSTOM GUI FILE
 1. In Bridge, make sure you also created 'RP/ui/attribute_levelup.json'.
 2. Paste the 'RP/ui/attribute_levelup.json (Custom GUI)' code from this tool into that new file.
 3. Don't forget your 'en_US.lang' texts! 'README.txt' isn't needed in Bridge.
@@ -878,6 +893,13 @@ STEP 3: ADD YOUR CUSTOM GUI FILE
                      <span>{toggleLocation === 'book' ? 'RP/ui/custom_book_injection.json (Modifications)' : 'RP/ui/custom_inventory_injection.json (Modifications)'}</span>
                   </div>
                   <div 
+                     onClick={() => setSelectedFile('RP/ui/_ui_defs.json')}
+                     className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === 'RP/ui/_ui_defs.json' ? 'bg-[#3498db]/20 text-blue-400' : 'text-[#aaa] hover:bg-[#333]'}`}
+                  >
+                     <FileJson className="w-3.5 h-3.5" />
+                     <span>RP/ui/_ui_defs.json</span>
+                  </div>
+                  <div 
                      onClick={() => setSelectedFile('RP/texts/en_US.lang')}
                      className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === 'RP/texts/en_US.lang' ? 'bg-[#3498db]/20 text-blue-400' : 'text-[#aaa] hover:bg-[#333]'}`}
                   >
@@ -893,6 +915,7 @@ STEP 3: ADD YOUR CUSTOM GUI FILE
                      if (selectedFile === 'RP/ui/custom_inventory_injection.json' || selectedFile === 'RP/ui/custom_book_injection.json') {
                          text = toggleLocation === 'book' ? generateBookJSON() : generateToggleJSON();
                      }
+                     if (selectedFile === 'RP/ui/_ui_defs.json') text = generateUIDefsJSON();
                      if (selectedFile === 'RP/texts/en_US.lang') {
                         const allElements = [...guiElements, ...bookElements];
                         const labels = allElements.filter(e=>e.type==='label').map(e => `label.${e.name.replace(/ /g, '_').toLowerCase()} = ${e.props.text}`).join('\n');
@@ -913,6 +936,7 @@ STEP 3: ADD YOUR CUSTOM GUI FILE
                <div className="flex-1 p-4 overflow-auto custom-scrollbar">
                   <pre className="text-[12px] font-mono text-[#dcdcaa] leading-relaxed">
                      {selectedFile === 'README.txt' && getReadmeText()}
+                     {selectedFile === 'RP/ui/_ui_defs.json' && generateUIDefsJSON()}
                      {selectedFile === 'RP/ui/attribute_levelup.json' && generateBridgeJSON()}
                      {(selectedFile === 'RP/ui/custom_inventory_injection.json' || selectedFile === 'RP/ui/custom_book_injection.json') && (toggleLocation === 'book' ? generateBookJSON() : generateToggleJSON())}
                      {selectedFile === 'RP/texts/en_US.lang' && (
