@@ -163,64 +163,47 @@ export default function App() {
     return `{
   "namespace": "crafting",
 
-  "wrapped_inventory_content": {
-    "type": "panel",
-    "controls": [
+  "recipe_inventory_screen_content": {
+    "modifications": [
       {
-        "vanilla_content@crafting.recipe_inventory_screen_content": {}
-      },
-      {
-        "custom_gui_toggle@common_toggles.light_text_toggle": {
-          "size": [100, 20],
-          "anchor_from": "top_right",
-          "anchor_to": "top_right",
-          "offset": [-10, 10],
-          "layer": 300,
-          "$button_text": "label.open_custom_gui",
-          "$toggle_name": "${toggleName}",
-          "$toggle_state_binding_name": "#is_custom_gui_open",
-          "$toggle_group_default_selected": 0
-        }
-      },
-      {
-        "custom_gui_container": {
-          "type": "panel",
-          "layer": 350,
-          "controls": [
-            {
-              "my_gui@attribute_levelup.main_screen": {}
+        "array_name": "controls",
+        "operation": "insert_back",
+        "value": [
+          {
+            "custom_gui_toggle@common_toggles.light_text_toggle": {
+              "size": [100, 20],
+              "anchor_from": "top_right",
+              "anchor_to": "top_right",
+              "offset": [ -5, 5 ],
+              "layer": 900,
+              "$button_text": "label.open_custom_gui",
+              "$toggle_name": "${toggleName}",
+              "$toggle_state_binding_name": "#is_custom_gui_open",
+              "$toggle_group_default_selected": 0
             }
-          ],
-          "bindings": [
-            {
-              "binding_type": "view",
-              "source_control_name": "custom_gui_toggle",
-              "source_property_name": "(#toggle_state)",
-              "target_property_name": "#visible"
+          },
+          {
+            "custom_gui_container": {
+              "type": "panel",
+              "layer": 950,
+              "controls": [
+                {
+                  "my_gui@attribute_levelup.main_screen": {}
+                }
+              ],
+              "bindings": [
+                {
+                  "binding_type": "view",
+                  "source_control_name": "custom_gui_toggle",
+                  "source_property_name": "(#toggle_state)",
+                  "target_property_name": "#visible"
+                }
+              ]
             }
-          ]
-        }
+          }
+        ]
       }
     ]
-  },
-
-  "inventory_screen@crafting.inventory_screen_base": {
-    "send_telemetry": false,
-    "$screen_content": "crafting.wrapped_inventory_content",
-    "$screen_bg_content": "common.screen_background",
-    "$screen_background_alpha": 0.4,
-    "$top_half_variant": "crafting.survival_panel_top_half"
-  },
-
-  "crafting_screen@crafting.inventory_screen_base": {
-    "send_telemetry": false,
-    "$uses_bundle_tooltip": true,
-    "$screen_content": "crafting.wrapped_inventory_content",
-    "$screen_bg_content": "common.screen_background",
-    "$screen_background_alpha": 0.4,
-    "$top_half_variant": "crafting.crafting_panel_top_half",
-    "$close_on_player_hurt|default": true,
-    "close_on_player_hurt": "$close_on_player_hurt"
   }
 }`;
   };
@@ -269,68 +252,40 @@ export default function App() {
     return `{
   "namespace": "book",
 
-  "wrapped_book_screen_content": {
-    "type": "panel",
-    "controls": [
+  "book_screen_content": {
+    "modifications": [
       {
-        "vanilla_content@book.book_screen_content": {}
-      },
-      {
-        "custom_book_overlay_container": {
-          "type": "panel",
-          "layer": 300,
-          "controls": [${controls}
-          ]
-        }
-      },
-      {
-        "custom_gui_container": {
-          "type": "panel",
-          "layer": 350,
-          "controls": [
-            {
-              "my_gui@attribute_levelup.main_screen": {}
+        "array_name": "controls",
+        "operation": "insert_back",
+        "value": [
+          {
+            "custom_book_overlay_container": {
+              "type": "panel",
+              "layer": 900,
+              "controls": [${controls}
+              ]
             }
-          ],
-          "bindings": [
-            {
-              "binding_type": "view",
-              "source_control_name": "${toggleControlName}",
-              "source_property_name": "(#toggle_state)",
-              "target_property_name": "#visible"
+          },
+          {
+            "custom_gui_container": {
+              "type": "panel",
+              "layer": 950,
+              "controls": [
+                {
+                  "my_gui@attribute_levelup.main_screen": {}
+                }
+              ],
+              "bindings": [
+                {
+                  "binding_type": "view",
+                  "source_control_name": "${toggleControlName}",
+                  "source_property_name": "(#toggle_state)",
+                  "target_property_name": "#visible"
+                }
+              ]
             }
-          ]
-        }
-      }
-    ]
-  },
-
-  "book_screen@common.base_screen": {
-    "$close_on_player_hurt|default": true,
-    "close_on_player_hurt": "$close_on_player_hurt",
-    "$screen_content": "book.wrapped_book_screen_content",
-    "$screen_bg_content": "common.screen_background",
-    "$screen_background_alpha": 0.4,
-    "button_mappings": [
-      {
-        "from_button_id": "button.menu_exit",
-        "to_button_id": "button.book_exit",
-        "mapping_type": "global"
-      },
-      {
-        "from_button_id": "button.menu_cancel",
-        "to_button_id": "button.book_exit",
-        "mapping_type": "global"
-      },
-      {
-        "from_button_id": "button.menu_tab_left",
-        "to_button_id": "button.prev_page",
-        "mapping_type": "global"
-      },
-      {
-        "from_button_id": "button.menu_tab_right",
-        "to_button_id": "button.next_page",
-        "mapping_type": "global"
+          }
+        ]
       }
     ]
   }
