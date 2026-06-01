@@ -18,7 +18,8 @@ import {
   Loader2,
   Code2,
   Download,
-  Key
+  Key,
+  Upload
 } from 'lucide-react';
 
 type ElementType = 'panel' | 'button' | 'label' | 'image';
@@ -120,13 +121,15 @@ export default function App() {
       }
       
       return `
-    "${el.name.replace(/ /g, '_').toLowerCase()}": {
-      "type": "${el.type === 'image' ? 'custom_image' : el.type}",
-      "size": [${el.width}, ${el.height}],
-      "offset": [${el.x}, ${el.y}],
-      "anchor_from": "top_left",
-      "anchor_to": "top_left"${el.type === 'label' ? `,\n      "text": "${el.props.text || ''}"` : ''}${extraCode ? ',\n      ' + extraCode : ''}
-    }`;
+      {
+        "${el.name.replace(/ /g, '_').toLowerCase()}": {
+          "type": "${el.type === 'image' ? 'custom_image' : el.type}",
+          "size": [${el.width}, ${el.height}],
+          "offset": [${el.x}, ${el.y}],
+          "anchor_from": "top_left",
+          "anchor_to": "top_left"${el.type === 'label' ? `,\n          "text": "${el.props.text || ''}"` : ''}${el.props.texture ? `,\n          "texture": "${el.props.texture}"` : ''}${extraCode ? ',\n          ' + extraCode.replace(/\n      /g, '\n          ') : ''}
+        }
+      }`;
     }).join(",");
 
     return `{
@@ -159,14 +162,9 @@ export default function App() {
     "button_mappings": [
       {
         "from_button_id": "button.menu_select",
-        "to_button_id": "button.open_custom_gui",
+        "to_button_id": "button.menu_select",
         "mapping_type": "pressed"
-      }${toggleKeybind ? `,
-      {
-        "from_button_id": "button.menu_custom_${toggleKeybind.toLowerCase()}",
-        "to_button_id": "button.open_custom_gui",
-        "mapping_type": "pressed"
-      }` : ''}
+      }
     ]
   }
 }`;
@@ -419,7 +417,7 @@ export default function App() {
              {elements.map(el => {
                 const isSelected = selectedId === el.id;
                 return (
-                   <div
+                     <div
                      key={el.id}
                      onPointerDown={(e) => handlePointerDown(e, el.id)}
                      style={{
@@ -431,12 +429,15 @@ export default function App() {
                         cursor: isDragging && isSelected ? 'grabbing' : 'grab',
                         border: isSelected ? '1px solid #3498db' : '1px solid transparent',
                         boxShadow: isSelected ? '0 0 0 1px rgba(52, 152, 219, 0.4)' : 'none',
-                        zIndex: isSelected ? 10 : 1
+                        zIndex: isSelected ? 10 : 1,
+                        backgroundImage: (el.type === 'panel' || el.type === 'image') && el.props.previewImage ? `url(${el.props.previewImage})` : 'none',
+                        backgroundSize: '100% 100%',
+                        backgroundRepeat: 'no-repeat'
                      }}
                      className={`
-                        ${el.type === 'panel' ? 'bg-[#c6c6c6] border-[2px] border-t-white border-l-white border-b-[#555] border-r-[#555]' : ''}
+                        ${el.type === 'panel' && !el.props.previewImage ? 'bg-[#c6c6c6] border-[2px] border-t-white border-l-white border-b-[#555] border-r-[#555]' : ''}
                         ${el.type === 'button' ? 'bg-[#d0d0d0] border-[2px] border-t-white border-l-white border-b-[#555] border-r-[#555] flex items-center justify-center active:border-t-[#555] active:border-l-[#555] active:border-b-white active:border-r-white' : ''}
-                        ${el.type === 'image' ? 'bg-[#333] opacity-80' : ''}
+                        ${el.type === 'image' && !el.props.previewImage ? 'bg-[#333] opacity-80' : ''}
                      `}
                    >
                      {el.type === 'label' && (
@@ -585,6 +586,55 @@ export default function App() {
                         </div>
                      )}
 
+                     {(selectedElement.type === 'image' || selectedElement.type === 'panel') && (
+                        <div className="flex flex-col gap-2">
+                           <span className="text-[10px] font-bold text-[#666] uppercase">Texture Settings</span>
+                           <div className="flex flex-col gap-1 mb-2">
+                              <label className="text-[9px] text-[#888]">Bedrock Texture Path</label>
+                              <input 
+                                 type="text" 
+                                 value={selectedElement.props.texture || ''} 
+                                 onChange={(e) => updateSelectedProp('texture', e.target.value)}
+                                 placeholder="textures/ui/..."
+                                 className="bg-[#111] border border-[#333] rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono transition-colors w-full"
+                              />
+                           </div>
+                           <div className="flex flex-col gap-1">
+                              <label className="text-[9px] text-[#888]">Local Preview Image</label>
+                              <label className="cursor-pointer bg-[#333] border border-[#444] rounded px-2 py-1.5 text-[11px] text-center text-[#aaa] hover:bg-[#3a3a3a] hover:text-white transition-colors flex items-center justify-center gap-2">
+                                 <Upload className="w-3.5 h-3.5" />
+                                 {selectedElement.props.previewImage ? 'Change Image...' : 'Upload Image...'}
+                                 <input 
+                                    type="file" 
+                                    accept="image/*" 
+                                    className="hidden"
+                                    onChange={(e) => {
+                                       const file = e.target.files?.[0];
+                                       if (file) {
+                                          const reader = new FileReader();
+                                          reader.onload = (ev) => {
+                                             updateSelectedProp('previewImage', ev.target?.result as string);
+                                          };
+                                          reader.readAsDataURL(file);
+                                       }
+                                    }}
+                                 />
+                              </label>
+                              {selectedElement.props.previewImage && (
+                                 <button 
+                                    onClick={() => {
+                                       const { previewImage, ...newProps } = selectedElement.props;
+                                       setElements(prev => prev.map(el => el.id === selectedId ? { ...el, props: newProps } : el));
+                                    }}
+                                    className="text-[9px] text-red-400 hover:text-red-300 mt-1 self-start"
+                                 >
+                                    Remove Preview
+                                 </button>
+                              )}
+                           </div>
+                        </div>
+                     )}
+
                       {/* AI Logic Generator Box */}
                       <div className="h-[1px] bg-[#333] w-full" />
                       <div className="flex flex-col gap-2">
@@ -623,6 +673,9 @@ export default function App() {
                            &nbsp;&nbsp;<span className="text-purple-400">"offset"</span>: <span className="text-[#dcdcaa]">[{selectedElement.x}, {selectedElement.y}]</span>,\n
                            {selectedElement.type === 'label' && (
                               <>&nbsp;&nbsp;<span className="text-purple-400">"text"</span>: <span className="text-green-400">"{selectedElement.props.text}"</span>,\n</>
+                           )}
+                           {selectedElement.props.texture && (
+                              <>&nbsp;&nbsp;<span className="text-purple-400">"texture"</span>: <span className="text-green-400">"{selectedElement.props.texture}"</span>,\n</>
                            )}
                            {selectedElement.props.bedrockCode ? (
                               <span className="text-yellow-400 whitespace-pre-wrap">{selectedElement.props.bedrockCode.split('\n').filter((_,i) => i>0 && i<selectedElement.props.bedrockCode.split('\n').length-1).join('\n')}</span>
