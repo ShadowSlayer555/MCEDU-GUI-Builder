@@ -163,7 +163,7 @@ export default function App() {
     return `{
   "namespace": "crafting",
 
-  "recipe_inventory_screen_content": {
+  "recipe_inventory_screen_content@crafting.recipe_inventory_screen_content": {
     "modifications": [
       {
         "array_name": "controls",
@@ -252,7 +252,7 @@ export default function App() {
     return `{
   "namespace": "book",
 
-  "book_screen_content": {
+  "book_screen_content@book.book_screen_content": {
     "modifications": [
       {
         "array_name": "controls",
