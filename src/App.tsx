@@ -72,7 +72,7 @@ export default function App() {
 
   const handleStartBuilder = () => {
     setGuiElements([
-      { id: Math.random().toString(36).substr(2, 9), type: 'panel', x: 200, y: 150, width: 400, height: 220, name: 'Main Background', props: { texture: 'textures/gui/new_bg.png' } },
+      { id: Math.random().toString(36).substr(2, 9), type: 'image', x: 200, y: 150, width: 400, height: 220, name: 'Main Background', props: { texture: 'textures/gui/new_bg.png' } },
       { id: Math.random().toString(36).substr(2, 9), type: 'button', x: 575, y: 155, width: 20, height: 20, name: 'Close Button', props: { text: 'X', action: 'close_gui' } }
     ]);
     if (toggleLocation === 'book') {
@@ -137,14 +137,24 @@ export default function App() {
          extraCode = code.slice(1, -1).trim();
       }
       
+      let typeField = `"type": "${el.type}",`;
+      let elName = el.name.replace(/ /g, '_').toLowerCase();
+      
+      if (el.type === 'button') {
+        typeField = "";
+        elName += "@common_buttons.light_text_button";
+      } else if (el.type === 'panel' && el.props.texture) {
+        typeField = `"type": "image",`;
+      }
+      
       return `
       {
-        "${el.name.replace(/ /g, '_').toLowerCase()}": {
-          "type": "${el.type}",
+        "${elName}": {
+          ${typeField}
           "size": [${el.width}, ${el.height}],
           "offset": [${el.x}, ${el.y}],
           "anchor_from": "top_left",
-          "anchor_to": "top_left"${el.type === 'label' ? `,\n          "text": "${el.props.text || ''}"` : ''}${el.props.texture ? `,\n          "texture": "${el.props.texture}"` : ''}${extraCode ? ',\n          ' + extraCode.replace(/\n      /g, '\n          ') : ''}
+          "anchor_to": "top_left"${el.type === 'label' ? `,\n          "text": "${el.props.text || ''}"` : ''}${el.props.texture ? `,\n          "texture": "${el.props.texture}"` : ''}${extraCode ? ',\n          ' + extraCode.replace(/\n      /g, '\n          ') : ''}${el.type === 'button' ? `,\n          "$pressed_button_name": "button.${el.name.replace(/ /g, '_').toLowerCase()}",\n          "$button_text": "label.${el.name.replace(/ /g, '_').toLowerCase()}"` : ''}
         }
       }`;
     }).join(",");
@@ -233,15 +243,25 @@ export default function App() {
           }`;
       }
       
+      let typeField = `"type": "${el.type}",`;
+      let elName = el.name.replace(/ /g, '_').toLowerCase();
+      
+      if (el.type === 'button') {
+        typeField = "";
+        elName += "@common_buttons.light_text_button";
+      } else if (el.type === 'panel' && el.props.texture) {
+        typeField = `"type": "image",`;
+      }
+      
       return `
           {
-            "${el.name.replace(/ /g, '_').toLowerCase()}": {
-              "type": "${el.type}",
+            "${elName}": {
+              ${typeField}
               "size": [${el.width}, ${el.height}],
               "offset": [${el.x}, ${el.y}],
               "layer": 300,
               "anchor_from": "top_left",
-              "anchor_to": "top_left"${el.type === 'label' ? `,\n              "text": "${el.props.text || ''}"` : ''}${el.props.texture ? `,\n              "texture": "${el.props.texture}"` : ''}${extraCode ? ',\n              ' + extraCode.replace(/\n      /g, '\n              ') : ''}
+              "anchor_to": "top_left"${el.type === 'label' ? `,\n              "text": "${el.props.text || ''}"` : ''}${el.props.texture ? `,\n              "texture": "${el.props.texture}"` : ''}${extraCode ? ',\n              ' + extraCode.replace(/\n      /g, '\n              ') : ''}${el.type === 'button' ? `,\n              "$pressed_button_name": "button.${el.name.replace(/ /g, '_').toLowerCase()}",\n              "$button_text": "label.${el.name.replace(/ /g, '_').toLowerCase()}"` : ''}
             }
           }`;
     }).join(",");
