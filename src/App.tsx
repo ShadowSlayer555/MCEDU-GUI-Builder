@@ -174,7 +174,7 @@ export default function App() {
               "size": [100, 20],
               "anchor_from": "top_right",
               "anchor_to": "top_right",
-              "offset": [ -5, 5 ],
+              "offset": [-5, 5],
               "layer": 900,
               "$button_text": "label.open_custom_gui",
               "$toggle_name": "${toggleName}",
