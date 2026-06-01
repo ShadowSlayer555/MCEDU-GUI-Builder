@@ -19,10 +19,14 @@ import {
   Code2,
   Download,
   Key,
-  Upload
+  Upload,
+  List,
+  SlidersHorizontal,
+  TextCursorInput,
+  CheckSquare
 } from 'lucide-react';
 
-type ElementType = 'panel' | 'button' | 'label' | 'image';
+type ElementType = 'panel' | 'button' | 'label' | 'image' | 'dropdown' | 'slider' | 'textfield' | 'toggle';
 
 interface EditorElement {
   id: string;
@@ -145,12 +149,24 @@ export default function App() {
         elName += "@common_buttons.light_text_button";
       } else if (el.type === 'panel' && el.props.texture) {
         typeField = `"type": "image",`;
+      } else if (el.type === 'dropdown') {
+        typeField = `"type": "dropdown",`; // NOTE: generic for json
+        elName += "@common.dropdown";
+      } else if (el.type === 'slider') {
+        typeField = `"type": "slider",`;
+        elName += "@common.slider";
+      } else if (el.type === 'textfield') {
+        typeField = "";
+        elName += "@common.text_edit_box";
+      } else if (el.type === 'toggle') {
+        typeField = "";
+        elName += "@common_toggles.light_text_toggle";
       }
       
       return `
       {
         "${elName}": {
-          ${typeField}
+          ${typeField !== '""' ? typeField : ''}
           "size": [${el.width}, ${el.height}],
           "offset": [${el.x}, ${el.y}],
           "anchor_from": "top_left",
@@ -251,12 +267,24 @@ export default function App() {
         elName += "@common_buttons.light_text_button";
       } else if (el.type === 'panel' && el.props.texture) {
         typeField = `"type": "image",`;
+      } else if (el.type === 'dropdown') {
+        typeField = `"type": "dropdown",`; // NOTE: generic for json
+        elName += "@common.dropdown";
+      } else if (el.type === 'slider') {
+        typeField = `"type": "slider",`;
+        elName += "@common.slider";
+      } else if (el.type === 'textfield') {
+        typeField = "";
+        elName += "@common.text_edit_box";
+      } else if (el.type === 'toggle') {
+        typeField = "";
+        elName += "@common_toggles.light_text_toggle";
       }
       
       return `
           {
             "${elName}": {
-              ${typeField}
+              ${typeField !== '""' ? typeField : ''}
               "size": [${el.width}, ${el.height}],
               "offset": [${el.x}, ${el.y}],
               "layer": 300,
@@ -319,6 +347,194 @@ export default function App() {
     "ui/${toggleLocation === 'book' ? 'custom_book_injection.json' : 'custom_inventory_injection.json'}"
   ]
 }`;
+  };
+
+  const generateBPManifest = () => {
+    return `{
+	"format_version": 2,
+	"metadata": {
+		"authors": [
+			"Umbra_Atelier"
+		],
+		"generated_with": {
+			"bridge": [
+				"2.7.54"
+			]
+		}
+	},
+	"header": {
+		"name": "EDU-GUI-MOD BP",
+		"description": "Script API UI Behavior Pack",
+		"min_engine_version": [
+			1,
+			21,
+			120
+		],
+		"uuid": "4c4f2918-946b-455f-adde-3ff3a1e6dcc8",
+		"version": [
+			1,
+			0,
+			9
+		]
+	},
+	"modules": [
+		{
+			"type": "data",
+			"uuid": "ccef7cb3-323d-4df0-a429-6423e230acaf",
+			"version": [
+				1,
+				0,
+				0
+			]
+		},
+		{
+			"type": "script",
+			"language": "javascript",
+			"uuid": "d8e3b123-9a3c-42b7-a3a8-4224c6debd21",
+			"version": [1, 0, 0],
+			"entry": "scripts/main.js"
+		}
+	],
+	"dependencies": [
+		{
+			"module_name": "@minecraft/server",
+			"version": "1.14.0"
+		},
+		{
+			"module_name": "@minecraft/server-ui",
+			"version": "1.3.0"
+		}
+	]
+}`;
+  };
+
+  const generateRPManifest = () => {
+    return `{
+	"format_version": 2,
+	"header": {
+		"name": "EDU-GUI-MOD RP",
+		"description": "Custom UI Resource Pack",
+		"min_engine_version": [1, 21, 120],
+		"uuid": "5521cc91-f29e-4249-8dfe-a00b17ad1f02",
+		"version": [1, 0, 9]
+	},
+	"modules": [
+		{
+			"type": "resources",
+			"uuid": "f8a002aa-1ef3-4014-b1c4-5d51084efde3",
+			"version": [1, 0, 0]
+		}
+	]
+}`;
+  };
+
+  const generateScriptAPI = () => {
+    const isModal = guiElements.some(e => ['dropdown', 'slider', 'textfield', 'toggle'].includes(e.type));
+    const buttons = guiElements.filter(e => e.type === 'button');
+    const labels = guiElements.filter(e => e.type === 'label');
+    const inputs = guiElements.filter(e => ['dropdown', 'slider', 'textfield', 'toggle'].includes(e.type));
+    
+    const title = labels[0]?.props.text || "Custom UI";
+    const body = labels.slice(1).map(l => l.props.text).join("\\n");
+
+    let formType = isModal ? 'ModalFormData' : 'ActionFormData';
+    let formBuilder = `const form = new ${formType}();\n  form.title("${title}");`;
+    
+    if (!isModal && (body || labels.length > 0)) {
+       formBuilder += `\n  if ("${body}") {\n    form.body("${body}");\n  }`;
+    }
+
+    let logicCode = "";
+
+    if (isModal) {
+      const formFields = inputs.map((input, index) => {
+         const name = input.props.text || input.name;
+         if (input.type === 'dropdown') {
+            const options = (input.props.dropdownOptions || "Option 1, Option 2").split(',').map(o => `"${o.trim()}"`).join(', ');
+            const defaultIdx = input.props.dropdownDefault || '0';
+            return `form.dropdown("${name}", [${options}], ${defaultIdx});`;
+         }
+         if (input.type === 'slider') {
+            const min = input.props.sliderMin || '0';
+            const max = input.props.sliderMax || '100';
+            const step = input.props.sliderStep || '1';
+            const defaultVal = input.props.sliderDefault || '0';
+            return `form.slider("${name}", ${min}, ${max}, ${step}, ${defaultVal});`;
+         }
+         if (input.type === 'textfield') {
+            const placeholder = input.props.textFieldPlaceholder || 'Placeholder';
+            const defaultVal = input.props.textFieldDefault || '';
+            const args = `"${name}", "${placeholder}"${defaultVal ? `, "${defaultVal}"` : ''}`;
+            return `form.textField(${args});`;
+         }
+         if (input.type === 'toggle') {
+            const defaultVal = input.props.toggleDefault === 'true' ? 'true' : 'false';
+            return `form.toggle("${name}", ${defaultVal});`;
+         }
+         return '';
+      }).join('\n  ');
+      
+      const submitBtn = buttons[0];
+      const submitText = submitBtn ? (submitBtn.props.text || submitBtn.name) : "Submit";
+      
+      formBuilder += `\n  ${formFields}`;
+      formBuilder += `\n  form.submitButton("${submitText}");`;
+
+      logicCode = `const formValues = response.formValues;\n    player.sendMessage("Form submitted! Values: " + JSON.stringify(formValues));`;
+    } else {
+      const btnCode = buttons.map((btn) => {
+          let text = btn.props.text || btn.name;
+          let iconStr = btn.props.texture ? `, "${btn.props.texture}"` : '';
+          return `.button("${text}"${iconStr})`;
+      }).join("\n    ");
+      
+      if (buttons.length > 0) {
+        formBuilder += `\n  form\n    ${btnCode};`;
+      }
+      
+      logicCode = buttons.map((btn, i) => {
+          return `if (response.selection === ${i}) {
+      // Player clicked ${btn.props.text || btn.name}
+      player.sendMessage("You clicked ${btn.props.text || btn.name}!");
+    }`;
+      }).join(" else ");
+    }
+
+    return `import { world, system } from "@minecraft/server";
+import { ${formType} } from "@minecraft/server-ui";
+
+/**
+ * NEW RECOMMENDATION: JSON UI is deprecated and breaks on modern versions!
+ * Use the Script API to build durable, hardcoded Ore UI screens.
+ * 
+ * To use this script, place it in: Behavior_Pack/scripts/main.js
+ * Make sure your manifest.json has the "@minecraft/server" and "@minecraft/server-ui" dependencies!
+ */
+
+// Example: Open UI when a player uses a Stick
+world.beforeEvents.itemUse.subscribe((event) => {
+  if (event.itemStack.typeId === "minecraft:stick") { // Change this to your desired item!
+    const player = event.source;
+    
+    // UI must be shown on the next tick
+    system.run(() => {
+       showCustomUI(player);
+    });
+  }
+});
+
+function showCustomUI(player) {
+  ${formBuilder}
+
+  form.show(player).then((response) => {
+    if (response.canceled) return;
+    
+    ${logicCode}
+  }).catch(e => {
+    console.error(e);
+  });
+}
+`;
   };
 
   const getReadmeText = () => {
@@ -533,17 +749,29 @@ STEP 4: ADD YOUR CUSTOM GUI FILE
           <div className="p-3 border-b border-[#333]">
             <div className="text-[10px] font-bold text-[#666] uppercase mb-2">GUI Toolbox</div>
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => addElement('panel')} className="h-10 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer">
-                 <Square className="w-4 h-4" /> Panel
+              <button onClick={() => addElement('panel')} className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer">
+                 <Square className="w-3 h-3" /> Panel
               </button>
-               <button onClick={() => addElement('button')} className="h-10 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer">
-                 <MousePointer2 className="w-4 h-4" /> Button
+               <button onClick={() => addElement('button')} className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer">
+                 <MousePointer2 className="w-3 h-3" /> Button
               </button>
-              <button onClick={() => addElement('label')} className="h-10 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer">
-                 <Type className="w-4 h-4" /> Label
+              <button onClick={() => addElement('label')} className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer">
+                 <Type className="w-3 h-3" /> Label
               </button>
-               <button onClick={() => addElement('image')} className="h-10 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer">
-                 <ImageIcon className="w-4 h-4" /> Image
+               <button onClick={() => addElement('image')} className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer">
+                 <ImageIcon className="w-3 h-3" /> Image
+              </button>
+              <button onClick={() => addElement('dropdown')} className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer">
+                 <List className="w-3 h-3" /> Dropdown
+              </button>
+              <button onClick={() => addElement('slider')} className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer">
+                 <SlidersHorizontal className="w-3 h-3" /> Slider
+              </button>
+              <button onClick={() => addElement('textfield')} className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-[10px] text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer">
+                 <TextCursorInput className="w-3 h-3" /> TextField
+              </button>
+              <button onClick={() => addElement('toggle')} className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer">
+                 <CheckSquare className="w-3 h-3" /> Toggle
               </button>
             </div>
           </div>
@@ -564,6 +792,10 @@ STEP 4: ADD YOUR CUSTOM GUI FILE
                      {el.type === 'button' && <MousePointer2 className="w-3 h-3 text-[#aaa]" />}
                      {el.type === 'label' && <Type className="w-3 h-3 text-[#aaa]" />}
                      {el.type === 'image' && <ImageIcon className="w-3 h-3 text-[#aaa]" />}
+                     {el.type === 'dropdown' && <List className="w-3 h-3 text-[#aaa]" />}
+                     {el.type === 'slider' && <SlidersHorizontal className="w-3 h-3 text-[#aaa]" />}
+                     {el.type === 'textfield' && <TextCursorInput className="w-3 h-3 text-[#aaa]" />}
+                     {el.type === 'toggle' && <CheckSquare className="w-3 h-3 text-[#aaa]" />}
                     <span className={`text-[11px] truncate ${selectedId === el.id ? 'text-white' : 'text-[#aaa]'}`}>{el.name}</span>
                   </div>
                ))}
@@ -618,6 +850,9 @@ STEP 4: ADD YOUR CUSTOM GUI FILE
                         ${el.type === 'panel' && !el.props.previewImage ? 'bg-[#c6c6c6] border-[2px] border-t-white border-l-white border-b-[#555] border-r-[#555]' : ''}
                         ${el.type === 'button' ? 'bg-[#d0d0d0] border-[2px] border-t-white border-l-white border-b-[#555] border-r-[#555] flex items-center justify-center active:border-t-[#555] active:border-l-[#555] active:border-b-white active:border-r-white' : ''}
                         ${el.type === 'image' && !el.props.previewImage ? 'bg-[#333] opacity-80' : ''}
+                        ${['dropdown', 'textfield'].includes(el.type) ? 'bg-[#1e1e1e] border border-[#555] flex items-center px-2' : ''}
+                        ${el.type === 'slider' ? 'bg-transparent flex flex-col justify-center' : ''}
+                        ${el.type === 'toggle' ? 'bg-transparent flex items-center gap-2' : ''}
                      `}
                    >
                      {el.type === 'label' && (
@@ -627,6 +862,25 @@ STEP 4: ADD YOUR CUSTOM GUI FILE
                          <div className="w-full h-full flex items-center justify-center font-mono text-[#404040] text-sm pointer-events-none select-none">
                             {el.props.text ? el.props.text : el.name}
                          </div>
+                     )}
+                     {['dropdown', 'textfield'].includes(el.type) && (
+                        <div className="text-[#aaa] text-sm font-mono truncate w-full pointer-events-none select-none">{el.type === 'textfield' ? (el.props.textFieldDefault || el.props.textFieldPlaceholder || el.props.text || el.name) : (el.props.text || el.name)}</div>
+                     )}
+                     {el.type === 'slider' && (
+                        <>
+                           <div className="text-[#aaa] text-xs font-mono mb-1 pointer-events-none select-none">{el.props.text || el.name} ({el.props.sliderDefault || '0'})</div>
+                           <div className="w-full h-1 bg-[#555] rounded relative">
+                              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-4 bg-[#d0d0d0] border border-[#555]" />
+                           </div>
+                        </>
+                     )}
+                     {el.type === 'toggle' && (
+                        <>
+                           <div className="w-4 h-4 border border-[#555] bg-[#1e1e1e] flex items-center justify-center">
+                              {el.props.toggleDefault === 'true' ? <CheckSquare className="w-3 h-3 text-[#aaa]" /> : <div className="w-2 h-2" />}
+                           </div>
+                           <div className="text-[#aaa] text-sm font-mono pointer-events-none select-none">{el.props.text || el.name}</div>
+                        </>
                      )}
                      
                      {isSelected && (
@@ -751,11 +1005,11 @@ STEP 4: ADD YOUR CUSTOM GUI FILE
 
                      <div className="h-[1px] bg-[#333] w-full" />
 
-                     {(selectedElement.type === 'label' || selectedElement.type === 'button') && (
+                     {(selectedElement.type === 'label' || selectedElement.type === 'button' || ['dropdown', 'slider', 'textfield', 'toggle'].includes(selectedElement.type)) && (
                         <div className="flex flex-col gap-2">
                            <span className="text-[10px] font-bold text-[#666] uppercase">Text Content</span>
                             <div className="flex flex-col gap-1">
-                              <label className="text-[9px] text-[#888]">Label Text</label>
+                              <label className="text-[9px] text-[#888]">Label / Button Text</label>
                               <input 
                                  type="text" 
                                  value={selectedElement.props.text || ''} 
@@ -763,6 +1017,101 @@ STEP 4: ADD YOUR CUSTOM GUI FILE
                                  className="bg-[#111] border border-[#333] rounded px-2 py-1.5 text-[11px] outline-none text-green-400 focus:border-green-500 font-mono transition-colors w-full"
                               />
                            </div>
+                           
+                           {selectedElement.type === 'dropdown' && (
+                              <div className="flex flex-col gap-1 mt-1">
+                                <label className="text-[9px] text-[#888]">Options (comma separated)</label>
+                                <input 
+                                   type="text" 
+                                   value={selectedElement.props.dropdownOptions || 'Option 1, Option 2'} 
+                                   onChange={(e) => updateSelectedProp('dropdownOptions', e.target.value)}
+                                   placeholder="Item 1, Item 2, Item 3"
+                                   className="bg-[#111] border border-[#333] rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+                                />
+                                <label className="text-[9px] text-[#888] mt-1">Default Selected Index</label>
+                                <input 
+                                   type="number" 
+                                   value={selectedElement.props.dropdownDefault || '0'} 
+                                   onChange={(e) => updateSelectedProp('dropdownDefault', e.target.value)}
+                                   className="bg-[#111] border border-[#333] rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+                                />
+                              </div>
+                           )}
+
+                           {selectedElement.type === 'slider' && (
+                              <div className="grid grid-cols-2 gap-2 mt-1">
+                                <div className="flex flex-col gap-1">
+                                  <label className="text-[9px] text-[#888]">Min Value</label>
+                                  <input 
+                                     type="number" 
+                                     value={selectedElement.props.sliderMin || '0'} 
+                                     onChange={(e) => updateSelectedProp('sliderMin', e.target.value)}
+                                     className="bg-[#111] border border-[#333] rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+                                  />
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                  <label className="text-[9px] text-[#888]">Max Value</label>
+                                  <input 
+                                     type="number" 
+                                     value={selectedElement.props.sliderMax || '100'} 
+                                     onChange={(e) => updateSelectedProp('sliderMax', e.target.value)}
+                                     className="bg-[#111] border border-[#333] rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+                                  />
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                  <label className="text-[9px] text-[#888]">Step Size</label>
+                                  <input 
+                                     type="number" 
+                                     value={selectedElement.props.sliderStep || '1'} 
+                                     onChange={(e) => updateSelectedProp('sliderStep', e.target.value)}
+                                     className="bg-[#111] border border-[#333] rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+                                  />
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                  <label className="text-[9px] text-[#888]">Default Value</label>
+                                  <input 
+                                     type="number" 
+                                     value={selectedElement.props.sliderDefault || '0'} 
+                                     onChange={(e) => updateSelectedProp('sliderDefault', e.target.value)}
+                                     className="bg-[#111] border border-[#333] rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+                                  />
+                                </div>
+                              </div>
+                           )}
+
+                           {selectedElement.type === 'textfield' && (
+                              <div className="flex flex-col gap-1 mt-1">
+                                <label className="text-[9px] text-[#888]">Placeholder Text</label>
+                                <input 
+                                   type="text" 
+                                   value={selectedElement.props.textFieldPlaceholder || 'Placeholder'} 
+                                   onChange={(e) => updateSelectedProp('textFieldPlaceholder', e.target.value)}
+                                   className="bg-[#111] border border-[#333] rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+                                />
+                                <label className="text-[9px] text-[#888] mt-1">Default Value</label>
+                                <input 
+                                   type="text" 
+                                   value={selectedElement.props.textFieldDefault || ''} 
+                                   onChange={(e) => updateSelectedProp('textFieldDefault', e.target.value)}
+                                   className="bg-[#111] border border-[#333] rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+                                />
+                              </div>
+                           )}
+
+                           {selectedElement.type === 'toggle' && (
+                              <div className="flex flex-col gap-1 mt-1">
+                                <label className="text-[9px] text-[#888]">Default State</label>
+                                <select
+                                   value={selectedElement.props.toggleDefault || 'false'}
+                                   onChange={(e) => updateSelectedProp('toggleDefault', e.target.value)}
+                                   className="bg-[#111] border border-[#333] rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+                                >
+                                  <option value="false">Unchecked</option>
+                                  <option value="true">Checked</option>
+                                </select>
+                              </div>
+                           )}
+
                         </div>
                      )}
 
@@ -898,6 +1247,33 @@ STEP 4: ADD YOUR CUSTOM GUI FILE
                      <FileJson className="w-3.5 h-3.5" />
                      <span>README.txt</span>
                   </div>
+                  <div className="mt-4 mb-2 text-[10px] font-bold text-[#888] uppercase tracking-wider px-2">
+                    Behavior Pack (Recommended)
+                  </div>
+                  <div 
+                     onClick={() => setSelectedFile('BP/manifest.json')}
+                     className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === 'BP/manifest.json' ? 'bg-[#3498db]/20 text-blue-400' : 'text-[#aaa] hover:bg-[#333]'}`}
+                  >
+                     <FileJson className="w-3.5 h-3.5 text-yellow-400" />
+                     <span className="text-yellow-400">BP/manifest.json</span>
+                  </div>
+                  <div 
+                     onClick={() => setSelectedFile('BP/scripts/main.js')}
+                     className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === 'BP/scripts/main.js' ? 'bg-[#3498db]/20 text-blue-400' : 'text-[#aaa] hover:bg-[#333]'}`}
+                  >
+                     <FileJson className="w-3.5 h-3.5 text-yellow-400" />
+                     <span className="text-yellow-400">BP/scripts/main.js (Script API)</span>
+                  </div>
+                  <div className="mt-4 mb-2 text-[10px] font-bold text-[#888] uppercase tracking-wider px-2">
+                    Resource Pack (Legacy UI)
+                  </div>
+                  <div 
+                     onClick={() => setSelectedFile('RP/manifest.json')}
+                     className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === 'RP/manifest.json' ? 'bg-[#3498db]/20 text-blue-400' : 'text-[#aaa] hover:bg-[#333]'}`}
+                  >
+                     <FileJson className="w-3.5 h-3.5" />
+                     <span>RP/manifest.json</span>
+                  </div>
                   <div 
                      onClick={() => setSelectedFile('RP/ui/attribute_levelup.json')}
                      className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === 'RP/ui/attribute_levelup.json' ? 'bg-[#3498db]/20 text-blue-400' : 'text-[#aaa] hover:bg-[#333]'}`}
@@ -919,7 +1295,7 @@ STEP 4: ADD YOUR CUSTOM GUI FILE
                      <FileJson className="w-3.5 h-3.5" />
                      <span>RP/ui/_ui_defs.json</span>
                   </div>
-                  <div 
+                   <div 
                      onClick={() => setSelectedFile('RP/texts/en_US.lang')}
                      className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === 'RP/texts/en_US.lang' ? 'bg-[#3498db]/20 text-blue-400' : 'text-[#aaa] hover:bg-[#333]'}`}
                   >
@@ -936,6 +1312,9 @@ STEP 4: ADD YOUR CUSTOM GUI FILE
                          text = toggleLocation === 'book' ? generateBookJSON() : generateToggleJSON();
                      }
                      if (selectedFile === 'RP/ui/_ui_defs.json') text = generateUIDefsJSON();
+                     if (selectedFile === 'BP/manifest.json') text = generateBPManifest();
+                     if (selectedFile === 'RP/manifest.json') text = generateRPManifest();
+                     if (selectedFile === 'BP/scripts/main.js') text = generateScriptAPI();
                      if (selectedFile === 'RP/texts/en_US.lang') {
                         const allElements = [...guiElements, ...bookElements];
                         const labels = allElements.filter(e=>e.type==='label').map(e => `label.${e.name.replace(/ /g, '_').toLowerCase()} = ${e.props.text}`).join('\n');
@@ -953,10 +1332,22 @@ STEP 4: ADD YOUR CUSTOM GUI FILE
                <div className="h-10 bg-[#252525] border-b border-[#333] flex items-center px-4 shrink-0">
                   <div className="text-[11px] font-mono text-[#888]">{selectedFile}</div>
                </div>
+               
+               <div className="bg-[#3a2a1a] border-b border-[#dd9b3b] text-[#ffd9a3] p-3 text-xs leading-relaxed">
+                  <div className="font-bold flex items-center gap-1.5 mb-1"><span role="img" aria-label="warning">⚠️</span> JSON UI Deprecation Warning (Minecraft 1.21.0+)</div>
+                  Minecraft Bedrock is replacing <b>JSON UI</b> with a hardcoded engine called <b>Ore UI</b> (such as the new Inventory, Death Screen, etc). Ore UI <u>cannot</u> be modified via resource packs.
+                  Modifying files like <code>recipe_inventory_screen_content</code> may break the game UI entirely.
+                  <br/><br/>
+                  <b>Modern Solution:</b> Export your GUI as a Behavior Pack Script using the new <b>BP/scripts/main.js (Script API)</b> export option on the left. It uses strictly supported <code>@minecraft/server-ui</code> ActionFormData which works natively in 1.21+!
+               </div>
+
                <div className="flex-1 p-4 overflow-auto custom-scrollbar">
                   <pre className="text-[12px] font-mono text-[#dcdcaa] leading-relaxed">
                      {selectedFile === 'README.txt' && getReadmeText()}
                      {selectedFile === 'RP/ui/_ui_defs.json' && generateUIDefsJSON()}
+                     {selectedFile === 'BP/manifest.json' && generateBPManifest()}
+                     {selectedFile === 'RP/manifest.json' && generateRPManifest()}
+                     {selectedFile === 'BP/scripts/main.js' && generateScriptAPI()}
                      {selectedFile === 'RP/ui/attribute_levelup.json' && generateBridgeJSON()}
                      {(selectedFile === 'RP/ui/custom_inventory_injection.json' || selectedFile === 'RP/ui/custom_book_injection.json') && (toggleLocation === 'book' ? generateBookJSON() : generateToggleJSON())}
                      {selectedFile === 'RP/texts/en_US.lang' && (

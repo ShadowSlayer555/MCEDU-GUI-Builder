@@ -16,7 +16,7 @@ async function startServer() {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
-        systemInstruction: "You are an expert at Minecraft Bedrock UI JSON programming.",
+        config: { systemInstruction: "You are an expert at Minecraft Bedrock UI JSON programming." },
         contents: `You are assisting a developer working on a custom GUI in Minecraft Bedrock edition. 
         They selected a "${elementType}" UI element and provided this instruction: "${prompt}".
         Generate the raw JSON object snippet that implements this logic for Bedrock (e.g., button_mappings for a button, or bindings for a label).
