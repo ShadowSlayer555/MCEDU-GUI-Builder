@@ -42,7 +42,19 @@ interface EditorElement {
 type ViewMode = 'designer' | 'book_editor' | 'export';
 type AppPhase = 'setup' | 'builder';
 
+const generateUUID = () => {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
+
 export default function App() {
+  const [bpUuid1, setBpUuid1] = useState(generateUUID);
+  const [bpUuid2, setBpUuid2] = useState(generateUUID);
+  const [bpUuid3, setBpUuid3] = useState(generateUUID);
+  const [rpUuid1, setRpUuid1] = useState(generateUUID);
+  const [rpUuid2, setRpUuid2] = useState(generateUUID);
   const [appPhase, setAppPhase] = useState<AppPhase>('setup');
   const [toggleLocation, setToggleLocation] = useState<'inventory' | 'book'>('inventory');
   const [toggleName, setToggleName] = useState('Open Custom GUI');
@@ -370,7 +382,7 @@ export default function App() {
 			21,
 			120
 		],
-		"uuid": "4c4f2918-946b-455f-adde-3ff3a1e6dcc8",
+		"uuid": "${bpUuid1}",
 		"version": [
 			1,
 			0,
@@ -380,7 +392,7 @@ export default function App() {
 	"modules": [
 		{
 			"type": "data",
-			"uuid": "ccef7cb3-323d-4df0-a429-6423e230acaf",
+			"uuid": "${bpUuid2}",
 			"version": [
 				1,
 				0,
@@ -390,7 +402,7 @@ export default function App() {
 		{
 			"type": "script",
 			"language": "javascript",
-			"uuid": "d8e3b123-9a3c-42b7-a3a8-4224c6debd21",
+			"uuid": "${bpUuid3}",
 			"version": [1, 0, 0],
 			"entry": "scripts/main.js"
 		}
@@ -415,13 +427,13 @@ export default function App() {
 		"name": "EDU-GUI-MOD RP",
 		"description": "Custom UI Resource Pack",
 		"min_engine_version": [1, 21, 120],
-		"uuid": "5521cc91-f29e-4249-8dfe-a00b17ad1f02",
+		"uuid": "${rpUuid1}",
 		"version": [1, 0, 9]
 	},
 	"modules": [
 		{
 			"type": "resources",
-			"uuid": "f8a002aa-1ef3-4014-b1c4-5d51084efde3",
+			"uuid": "${rpUuid2}",
 			"version": [1, 0, 0]
 		}
 	]
@@ -1329,8 +1341,23 @@ STEP 4: ADD YOUR CUSTOM GUI FILE
                </div>
             </aside>
             <main className="flex-1 bg-[#1e1e1e] flex flex-col overflow-hidden">
-               <div className="h-10 bg-[#252525] border-b border-[#333] flex items-center px-4 shrink-0">
+               <div className="h-10 bg-[#252525] border-b border-[#333] flex items-center justify-between px-4 shrink-0">
                   <div className="text-[11px] font-mono text-[#888]">{selectedFile}</div>
+                  
+                  {['BP/manifest.json', 'RP/manifest.json'].includes(selectedFile) && (
+                    <div className="flex gap-4 items-center">
+                      <span className="text-[#888] text-[10px]">Note: You only need these files for a new mod. Try pasting modules into your existing manifest.</span>
+                      <button onClick={() => {
+                        setBpUuid1(generateUUID());
+                        setBpUuid2(generateUUID());
+                        setBpUuid3(generateUUID());
+                        setRpUuid1(generateUUID());
+                        setRpUuid2(generateUUID());
+                      }} className="bg-[#333] hover:bg-[#444] text-[10px] text-white px-2 py-1 rounded transition-colors border border-[#555]">
+                        Regenerate UUIDs
+                      </button>
+                    </div>
+                  )}
                </div>
                
                <div className="bg-[#3a2a1a] border-b border-[#dd9b3b] text-[#ffd9a3] p-3 text-xs leading-relaxed">
