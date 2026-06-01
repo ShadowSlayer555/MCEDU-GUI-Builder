@@ -35,21 +35,32 @@ interface EditorElement {
   props: Record<string, string>;
 }
 
-type ViewMode = 'designer' | 'export';
+type ViewMode = 'designer' | 'book_editor' | 'export';
 type AppPhase = 'setup' | 'builder';
 
 export default function App() {
   const [appPhase, setAppPhase] = useState<AppPhase>('setup');
-  const [toggleLocation, setToggleLocation] = useState<'inventory' | 'hud'>('inventory');
+  const [toggleLocation, setToggleLocation] = useState<'inventory' | 'book'>('inventory');
   const [toggleName, setToggleName] = useState('Open Custom GUI');
   const [toggleKeybind, setToggleKeybind] = useState('H');
   
-  const [elements, setElements] = useState<EditorElement[]>([]);
+  const [guiElements, setGuiElements] = useState<EditorElement[]>([]);
+  const [bookElements, setBookElements] = useState<EditorElement[]>([]);
+  
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [viewMode, setViewMode] = useState<ViewMode>('designer');
   const [selectedFile, setSelectedFile] = useState<string>('RP/ui/attribute_levelup.json');
+  
+  const elements = viewMode === 'book_editor' ? bookElements : guiElements;
+  const setElements = (value: React.SetStateAction<EditorElement[]>) => {
+    if (viewMode === 'book_editor') {
+      setBookElements(value);
+    } else {
+      setGuiElements(value);
+    }
+  };
   
   const [aiPrompt, setAiPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -60,10 +71,15 @@ export default function App() {
   const canvasRef = useRef<HTMLDivElement>(null);
 
   const handleStartBuilder = () => {
-    setElements([
+    setGuiElements([
       { id: Math.random().toString(36).substr(2, 9), type: 'panel', x: 200, y: 150, width: 400, height: 220, name: 'Main Background', props: { texture: 'textures/gui/new_bg.png' } },
       { id: Math.random().toString(36).substr(2, 9), type: 'button', x: 575, y: 155, width: 20, height: 20, name: 'Close Button', props: { text: 'X', action: 'close_gui' } }
     ]);
+    if (toggleLocation === 'book') {
+       setBookElements([
+         { id: Math.random().toString(36).substr(2, 9), type: 'button', x: 20, y: 20, width: 100, height: 20, name: 'Open GUI Toggle', props: { text: toggleName } }
+       ]);
+    }
     setSelectedFile('README.txt');
     setAppPhase('builder');
   };
@@ -114,7 +130,7 @@ export default function App() {
   };
 
   const generateBridgeJSON = () => {
-    const controls = elements.map(el => {
+    const controls = guiElements.map(el => {
       let code = el.props.bedrockCode;
       let extraCode = "";
       if (code && code.startsWith("{") && code.endsWith("}")) {
@@ -192,27 +208,114 @@ export default function App() {
 }`;
   };
 
+  const generateBookJSON = () => {
+    const controls = bookElements.map(el => {
+      let code = el.props.bedrockCode;
+      let extraCode = "";
+      if (code && code.startsWith("{") && code.endsWith("}")) {
+         extraCode = code.slice(1, -1).trim();
+      }
+      
+      if (el.name.toLowerCase().includes('toggle')) {
+        return `
+          {
+            "${el.name.replace(/ /g, '_').toLowerCase()}@common_toggles.light_text_toggle": {
+              "size": [${el.width}, ${el.height}],
+              "offset": [${el.x}, ${el.y}],
+              "layer": 50,
+              "anchor_from": "top_left",
+              "anchor_to": "top_left",
+              "$button_text": "label.${el.name.replace(/ /g, '_').toLowerCase()}",
+              "$toggle_name": "custom_gui_toggle_state",
+              "$toggle_state_binding_name": "#is_custom_gui_open",
+              "$toggle_group_default_selected": 0${extraCode ? ',\n              ' + extraCode.replace(/\n      /g, '\n              ') : ''}
+            }
+          }`;
+      }
+      
+      return `
+          {
+            "${el.name.replace(/ /g, '_').toLowerCase()}": {
+              "type": "${el.type}",
+              "size": [${el.width}, ${el.height}],
+              "offset": [${el.x}, ${el.y}],
+              "layer": 50,
+              "anchor_from": "top_left",
+              "anchor_to": "top_left"${el.type === 'label' ? `,\n              "text": "${el.props.text || ''}"` : ''}${el.props.texture ? `,\n              "texture": "${el.props.texture}"` : ''}${extraCode ? ',\n              ' + extraCode.replace(/\n      /g, '\n              ') : ''}
+            }
+          }`;
+    }).join(",");
+
+    const toggleEl = bookElements.find(el => el.name.toLowerCase().includes('toggle'));
+    const toggleControlName = toggleEl ? toggleEl.name.replace(/ /g, '_').toLowerCase() : 'custom_gui_toggle';
+
+    return `{
+  "namespace": "book",
+
+  "book_screen": {
+    "modifications": [
+      {
+        "array_name": "controls",
+        "operation": "insert_back",
+        "value": [
+          {
+            "custom_book_overlay_container": {
+              "type": "panel",
+              "layer": 55,
+              "controls": [${controls}
+              ]
+            }
+          },
+          {
+            "custom_gui_container": {
+              "type": "panel",
+              "layer": 60,
+              "controls": [
+                {
+                  "my_gui@attribute_levelup.main_screen": {}
+                }
+              ],
+              "bindings": [
+                {
+                  "binding_type": "view",
+                  "source_control_name": "${toggleControlName}",
+                  "source_property_name": "(#toggle_state)",
+                  "target_property_name": "#visible"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}`;
+  };
+
   const getReadmeText = () => {
+    const filename = toggleLocation === 'book' ? 'custom_book_injection.json' : 'custom_inventory_injection.json';
+    const targetScreen = toggleLocation === 'book' ? 'book_screen.json' : 'inventory_screen.json';
+    
      return `==========================================
 CRITICAL BEDROCK UI MODDING RULES
 ==========================================
 
 Why didn't your hud_screen button or keybind work?
-1. MOUSE CURSOR: On PC, you cannot click the HUD because your mouse is locked to the camera. You MUST place your button inside a screen where the cursor is active (like the Inventory Screen).
-2. FAKE KEYBINDS: Bedrock JSON UI does not allow binding custom keys (like "H") or making up actions (like "button.open_custom_gui"). If the game doesn't natively know what doing that means, it throws an error in the log and breaks.
+1. MOUSE CURSOR: On PC, you cannot click the HUD because your mouse is locked to the camera. You MUST place your button inside a screen where the cursor is active.
+2. FAKE KEYBINDS: Bedrock JSON UI does not allow binding custom keys (like "H") or making up actions.
 3. STANDALONE SCREENS: You cannot just make a new file called "my_screen.json" and expect it to magically open. The game only knows vanilla screens.
 
 THE SOLUTION (INJECTION VIA MODIFICATIONS):
-To make your GUI work purely with JSON using Bridge IDE WITHOUT destroying your vanilla inventory:
+To make your GUI work purely with JSON using Bridge IDE WITHOUT destroying your vanilla GUI:
 
-STEP 1: NEVER NAME IT 'inventory_screen.json'
-If you name your file exactly 'inventory_screen.json', Minecraft completely replaces the vanilla file. Since this snippet only contains the modification block, all the other vanilla inventory panels are lost, causing your screen to be completely empty!
+STEP 1: NEVER NAME IT '${targetScreen}'
+If you name your file exactly '${targetScreen}', Minecraft completely replaces the vanilla file. Since this snippet only contains the modification block, all the other vanilla panels are lost, causing your screen to be completely empty!
 
 STEP 2: ADD IT TO BRIDGE SAFELY
-1. In Bridge IDE, create a **NEW** file in your 'ui' folder with a custom name, for example: 'RP/ui/custom_inventory_injection.json'
-2. Copy the ENTIRE contents of the 'RP/ui/custom_inventory_injection.json' tab and paste it into that new file inside Bridge.
+1. In Bridge IDE, create a **NEW** file in your 'ui' folder with a custom name, for example: 'RP/ui/${filename}'
+2. Copy the ENTIRE contents of the 'RP/ui/${filename}' tab and paste it into that new file inside Bridge.
 3. Bridge IDE will automatically detect this new UI file and add it to 'ui_defs.json' behind the scenes.
-4. Because the file has a different name, the game loads the full real inventory first, then safely applies your modification on top!
+4. Because the file has a different name, the game loads the full real screen first, then safely applies your modification on top!
 
 STEP 3: ADD YOUR CUSTOM GUI FILE
 1. In Bridge, make sure you also created 'RP/ui/attribute_levelup.json'.
@@ -318,7 +421,10 @@ STEP 3: ADD YOUR CUSTOM GUI FILE
           <div className="h-6 w-[1px] bg-[#444]"></div>
           {appPhase === 'builder' && (
              <nav className="flex gap-4 text-xs font-medium uppercase tracking-wider text-[#999]">
-               <span onClick={() => setViewMode('designer')} className={`cursor-pointer transition-colors ${viewMode === 'designer' ? 'text-blue-400 font-bold' : 'hover:text-white'}`}>Designer</span>
+               <span onClick={() => setViewMode('designer')} className={`cursor-pointer transition-colors ${viewMode === 'designer' ? 'text-blue-400 font-bold' : 'hover:text-white'}`}>GUI Designer</span>
+               {toggleLocation === 'book' && (
+                 <span onClick={() => setViewMode('book_editor')} className={`cursor-pointer transition-colors ${viewMode === 'book_editor' ? 'text-blue-400 font-bold' : 'hover:text-white'}`}>Book Editor</span>
+               )}
                <span onClick={() => setViewMode('export')} className={`cursor-pointer transition-colors ${viewMode === 'export' ? 'text-blue-400 font-bold' : 'hover:text-white'}`}>Code & Export</span>
              </nav>
           )}
@@ -357,10 +463,11 @@ STEP 3: ADD YOUR CUSTOM GUI FILE
                        <label className="text-[11px] font-bold text-[#aaa] uppercase tracking-wider">Button Location</label>
                        <select 
                           value={toggleLocation} 
-                          onChange={(e) => setToggleLocation(e.target.value as 'inventory'|'hud')}
+                          onChange={(e) => setToggleLocation(e.target.value as 'inventory'|'book')}
                           className="bg-[#111] border border-[#333] px-3 py-2 rounded text-white text-sm outline-none focus:border-blue-500"
                        >
                           <option value="inventory">Inventory Screen (Recommended)</option>
+                          <option value="book">Book Screen (Item)</option>
                        </select>
                     </div>
 
@@ -384,7 +491,7 @@ STEP 3: ADD YOUR CUSTOM GUI FILE
                  </button>
               </div>
            </div>
-        ) : viewMode === 'designer' ? (
+        ) : (viewMode === 'designer' || viewMode === 'book_editor') ? (
           <>
             {/* Left Sidebar: Assets & Layers */}
         <aside className="w-64 border-r border-[#333] flex flex-col bg-[#212121] shrink-0">
@@ -764,11 +871,11 @@ STEP 3: ADD YOUR CUSTOM GUI FILE
                      <span>RP/ui/attribute_levelup.json (Custom GUI)</span>
                   </div>
                   <div 
-                     onClick={() => setSelectedFile('RP/ui/custom_inventory_injection.json')}
-                     className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === 'RP/ui/custom_inventory_injection.json' ? 'bg-[#3498db]/20 text-blue-400' : 'text-[#aaa] hover:bg-[#333]'}`}
+                     onClick={() => setSelectedFile(toggleLocation === 'book' ? 'RP/ui/custom_book_injection.json' : 'RP/ui/custom_inventory_injection.json')}
+                     className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${(selectedFile === 'RP/ui/custom_inventory_injection.json' || selectedFile === 'RP/ui/custom_book_injection.json') ? 'bg-[#3498db]/20 text-blue-400' : 'text-[#aaa] hover:bg-[#333]'}`}
                   >
                      <FileJson className="w-3.5 h-3.5" />
-                     <span>RP/ui/custom_inventory_injection.json (Modifications)</span>
+                     <span>{toggleLocation === 'book' ? 'RP/ui/custom_book_injection.json (Modifications)' : 'RP/ui/custom_inventory_injection.json (Modifications)'}</span>
                   </div>
                   <div 
                      onClick={() => setSelectedFile('RP/texts/en_US.lang')}
@@ -783,9 +890,12 @@ STEP 3: ADD YOUR CUSTOM GUI FILE
                      let text = "";
                      if (selectedFile === 'README.txt') text = getReadmeText();
                      if (selectedFile === 'RP/ui/attribute_levelup.json') text = generateBridgeJSON();
-                     if (selectedFile === 'RP/ui/custom_inventory_injection.json') text = generateToggleJSON();
+                     if (selectedFile === 'RP/ui/custom_inventory_injection.json' || selectedFile === 'RP/ui/custom_book_injection.json') {
+                         text = toggleLocation === 'book' ? generateBookJSON() : generateToggleJSON();
+                     }
                      if (selectedFile === 'RP/texts/en_US.lang') {
-                        const labels = elements.filter(e=>e.type==='label').map(e => `label.${e.name.replace(/ /g, '_').toLowerCase()} = ${e.props.text}`).join('\n');
+                        const allElements = [...guiElements, ...bookElements];
+                        const labels = allElements.filter(e=>e.type==='label').map(e => `label.${e.name.replace(/ /g, '_').toLowerCase()} = ${e.props.text}`).join('\n');
                         const toggleStr = `label.open_custom_gui = ${toggleName}`;
                         text = `## Text bindings for attribute_levelup.json\n\n${toggleStr}\n${labels}`;
                      }
@@ -804,11 +914,11 @@ STEP 3: ADD YOUR CUSTOM GUI FILE
                   <pre className="text-[12px] font-mono text-[#dcdcaa] leading-relaxed">
                      {selectedFile === 'README.txt' && getReadmeText()}
                      {selectedFile === 'RP/ui/attribute_levelup.json' && generateBridgeJSON()}
-                     {selectedFile === 'RP/ui/custom_inventory_injection.json' && generateToggleJSON()}
+                     {(selectedFile === 'RP/ui/custom_inventory_injection.json' || selectedFile === 'RP/ui/custom_book_injection.json') && (toggleLocation === 'book' ? generateBookJSON() : generateToggleJSON())}
                      {selectedFile === 'RP/texts/en_US.lang' && (
                         `## Text bindings for attribute_levelup.json\n\n` + 
                         `label.open_custom_gui = ${toggleName}\n` +
-                        `${elements.filter(e=>e.type==='label').map(e => `label.${e.name.replace(/ /g, '_').toLowerCase()} = ${e.props.text}`).join('\n')}`
+                        `${[...guiElements, ...bookElements].filter(e=>e.type==='label').map(e => `label.${e.name.replace(/ /g, '_').toLowerCase()} = ${e.props.text}`).join('\n')}`
                      )}
                   </pre>
                </div>
