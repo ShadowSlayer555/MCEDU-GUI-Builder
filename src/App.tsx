@@ -44,17 +44,6 @@ export default function App() {
   const [toggleName, setToggleName] = useState('Open Custom GUI');
   const [toggleKeybind, setToggleKeybind] = useState('H');
   
-  const [vanillaInventoryJson, setVanillaInventoryJson] = useState<string>('');
-
-  useEffect(() => {
-    fetch('https://raw.githubusercontent.com/Mojang/bedrock-samples/main/resource_pack/ui/inventory_screen.json')
-      .then(res => res.text())
-      .then(text => {
-        setVanillaInventoryJson(text);
-      })
-      .catch(err => console.error("Could not fetch vanilla inventory", err));
-  }, []);
-
   const [elements, setElements] = useState<EditorElement[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -155,92 +144,52 @@ export default function App() {
   };
 
   const generateToggleJSON = () => {
-    const fallbackText = `// ADD THIS INTO THE INVENTORY SCREEN TO TOGGLE YOUR GUI
-// Place this inside the 'controls' array of 'inventory_screen.json'
-{
-  "custom_gui_toggle@common_toggles.light_text_toggle": {
-    "size": [100, 20],
-    "anchor_from": "top_right",
-    "anchor_to": "top_right",
-    "offset": [-10, 10],
-    "layer": 50,
-    "$button_text": "label.open_custom_gui",
-    "$toggle_name": "custom_gui_toggle_state",
-    "$toggle_state_binding_name": "#is_custom_gui_open",
-    "$toggle_group_default_selected": 0
-  }
-},
-{
-  "custom_gui_container": {
-    "type": "panel",
-    "layer": 55,
-    "controls": [
+    return `{
+  "namespace": "inventory",
+
+  "inventory_screen": {
+    "modifications": [
       {
-        "my_gui@attribute_levelup.main_screen": {}
-      }
-    ],
-    "bindings": [
-      {
-        "binding_type": "view",
-        "source_control_name": "custom_gui_toggle",
-        "source_property_name": "(#toggle_state)",
-        "target_property_name": "#visible"
+        "array_name": "controls",
+        "operation": "insert_back",
+        "value": [
+          {
+            "custom_gui_toggle@common_toggles.light_text_toggle": {
+              "size": [100, 20],
+              "anchor_from": "top_right",
+              "anchor_to": "top_right",
+              "offset": [-10, 10],
+              "layer": 50,
+              "$button_text": "label.open_custom_gui",
+              "$toggle_name": "custom_gui_toggle_state",
+              "$toggle_state_binding_name": "#is_custom_gui_open",
+              "$toggle_group_default_selected": 0
+            }
+          },
+          {
+            "custom_gui_container": {
+              "type": "panel",
+              "layer": 55,
+              "controls": [
+                {
+                  "my_gui@attribute_levelup.main_screen": {}
+                }
+              ],
+              "bindings": [
+                {
+                  "binding_type": "view",
+                  "source_control_name": "custom_gui_toggle",
+                  "source_property_name": "(#toggle_state)",
+                  "target_property_name": "#visible"
+                }
+              ]
+            }
+          }
+        ]
       }
     ]
   }
 }`;
-
-    if (!vanillaInventoryJson) {
-      return "// Fetching full vanilla inventory_screen.json... please wait.\n" + fallbackText;
-    }
-
-    const searchStr = '"inventory_screen_content": {';
-    const contentIdx = vanillaInventoryJson.indexOf(searchStr);
-    
-    if (contentIdx === -1) {
-       return `// Could not auto-inject into vanilla file. Please manually paste this...\n` + fallbackText;
-    }
-    
-    const controlsIdx = vanillaInventoryJson.indexOf('"controls": [', contentIdx);
-    if (controlsIdx === -1) return fallbackText;
-    
-    const insertIdx = controlsIdx + '"controls": ['.length;
-    
-    const injection = `
-        {
-          "custom_gui_toggle@common_toggles.light_text_toggle": {
-            "size": [100, 20],
-            "anchor_from": "top_right",
-            "anchor_to": "top_right",
-            "offset": [-10, 10],
-            "layer": 70,
-            "$button_text": "label.open_custom_gui",
-            "$toggle_name": "custom_gui_toggle_state",
-            "$toggle_state_binding_name": "#is_custom_gui_open",
-            "$toggle_group_default_selected": 0
-          }
-        },
-        {
-          "custom_gui_container": {
-            "type": "panel",
-            "layer": 75,
-            "controls": [
-              {
-                "my_gui@attribute_levelup.main_screen": {}
-              }
-            ],
-            "bindings": [
-              {
-                "binding_type": "view",
-                "source_control_name": "custom_gui_toggle",
-                "source_property_name": "(#toggle_state)",
-                "target_property_name": "#visible"
-              }
-            ]
-          }
-        },`;
-        
-    return vanillaInventoryJson.slice(0, insertIdx) + injection + vanillaInventoryJson.slice(insertIdx);
   };
 
   const getReadmeText = () => {
@@ -253,22 +202,21 @@ Why didn't your hud_screen button or keybind work?
 2. FAKE KEYBINDS: Bedrock JSON UI does not allow binding custom keys (like "H") or making up actions (like "button.open_custom_gui"). If the game doesn't natively know what doing that means, it throws an error in the log and breaks.
 3. STANDALONE SCREENS: You cannot just make a new file called "my_screen.json" and expect it to magically open. The game only knows vanilla screens.
 
-THE SOLUTION (INJECTION INTO INVENTORY_SCREEN.JSON):
+THE SOLUTION (INJECTION VIA MODIFICATIONS):
 To make your GUI work purely with JSON using Bridge IDE:
 
-STEP 1: THIS APP DOES THE HARD WORK
-This app automatically fetched the vanilla 1.21 'inventory_screen.json' and injected your code directly into it. 
-Look at the 'RP/ui/inventory_screen.json (Complete Injected File)' tab.
+STEP 1: USE MODIFICATIONS
+This app generates an 'inventory_screen.json' file that uses the Bedrock 'modifications' feature. This inserts your GUI safely without overwriting the entire massive vanilla file.
 
 STEP 2: ADD IT TO BRIDGE
 1. In Bridge IDE, create a new file located exactly at: 'RP/ui/inventory_screen.json'
-2. Copy the ENTIRE contents of the 'RP/ui/inventory_screen.json (Complete Injected File)' tab and paste it into that new file inside Bridge. (Just overwrite whatever is there)
+2. Copy the ENTIRE contents of the 'RP/ui/inventory_screen.json (Modifications)' tab and paste it into that new file inside Bridge.
 3. You will now have a custom toggle button in your inventory that reveals your custom GUI!
 
 STEP 3: ADD YOUR CUSTOM GUI FILE
 1. In Bridge, make sure you also created 'RP/ui/attribute_levelup.json'.
 2. Paste the 'RP/ui/attribute_levelup.json (Custom GUI)' code from this tool into that new file.
-3. Don't forget your 'en_US.lang' texts and 'README.txt' isn't needed in Bridge.
+3. Don't forget your 'en_US.lang' texts! 'README.txt' isn't needed in Bridge.
 `;
   };
 
@@ -819,7 +767,7 @@ STEP 3: ADD YOUR CUSTOM GUI FILE
                      className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === 'RP/ui/inventory_screen.json' ? 'bg-[#3498db]/20 text-blue-400' : 'text-[#aaa] hover:bg-[#333]'}`}
                   >
                      <FileJson className="w-3.5 h-3.5" />
-                     <span>RP/ui/inventory_screen.json (Complete Injected File)</span>
+                     <span>RP/ui/inventory_screen.json (Modifications)</span>
                   </div>
                   <div 
                      onClick={() => setSelectedFile('RP/texts/en_US.lang')}
