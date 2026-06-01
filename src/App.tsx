@@ -17,7 +17,8 @@ import {
   Wand2,
   Loader2,
   Code2,
-  Download
+  Download,
+  Key
 } from 'lucide-react';
 
 type ElementType = 'panel' | 'button' | 'label' | 'image';
@@ -34,13 +35,15 @@ interface EditorElement {
 }
 
 type ViewMode = 'designer' | 'export';
+type AppPhase = 'setup' | 'builder';
 
 export default function App() {
-  const [elements, setElements] = useState<EditorElement[]>([
-    { id: '1', type: 'panel', x: 50, y: 50, width: 400, height: 220, name: 'Main Background', props: { texture: 'textures/gui/new_bg.png' } },
-    { id: '2', type: 'label', x: 70, y: 70, width: 100, height: 20, name: 'Title', props: { text: 'Attribute Points: 5' } },
-    { id: '3', type: 'button', x: 70, y: 110, width: 120, height: 30, name: 'Strength +', props: { action: 'increase_str' } }
-  ]);
+  const [appPhase, setAppPhase] = useState<AppPhase>('setup');
+  const [toggleLocation, setToggleLocation] = useState<'inventory' | 'hud'>('inventory');
+  const [toggleName, setToggleName] = useState('Open Custom GUI');
+  const [toggleKeybind, setToggleKeybind] = useState('H');
+  
+  const [elements, setElements] = useState<EditorElement[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -49,26 +52,60 @@ export default function App() {
   
   const [aiPrompt, setAiPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('GEMINI_API_KEY') || '');
+  const [showSettings, setShowSettings] = useState(false);
 
   const canvasRef = useRef<HTMLDivElement>(null);
 
+  const handleStartBuilder = () => {
+    setElements([
+      { id: Math.random().toString(36).substr(2, 9), type: 'panel', x: 200, y: 150, width: 400, height: 220, name: 'Main Background', props: { texture: 'textures/gui/new_bg.png' } },
+      { id: Math.random().toString(36).substr(2, 9), type: 'button', x: 575, y: 155, width: 20, height: 20, name: 'Close Button', props: { text: 'X', action: 'close_gui' } }
+    ]);
+    setAppPhase('builder');
+  };
+
+  const saveApiKey = (key: string) => {
+    setApiKey(key);
+    localStorage.setItem('GEMINI_API_KEY', key);
+  };
+
   const handleGenerateLogic = async () => {
     if (!selectedId || !aiPrompt) return;
+    if (!apiKey) {
+      alert("Please configure your Gemini API Key in Settings first.");
+      setShowSettings(true);
+      return;
+    }
+    
     setIsGenerating(true);
     const el = elements.find(e => e.id === selectedId);
+    
     try {
-      const res = await fetch("/api/generate-logic", {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: aiPrompt, elementType: el?.type })
+        body: JSON.stringify({
+           system_instruction: { parts: [{ text: "You are an expert at Minecraft Bedrock UI JSON programming." }] },
+           contents: [{ role: "user", parts: [{ text: `You are assisting a developer working on a custom GUI in Minecraft Bedrock edition. 
+        They selected a "${el?.type}" UI element and provided this instruction: "${aiPrompt}".
+        Generate the raw JSON object snippet that implements this logic for Bedrock (e.g., button_mappings for a button, or bindings for a label).
+        Return ONLY valid JSON. Omit all markdown formatting like \`\`\`json. Return just the JSON object string.` }] }]
+        })
       });
-      const data = await res.json();
-      if (data.result) {
-        updateSelectedProp("bedrockCode", data.result);
-        setAiPrompt("");
+      const data = await response.json();
+      if (data.candidates && data.candidates[0].content.parts[0].text) {
+         let text = data.candidates[0].content.parts[0].text;
+         text = text.replace(/```json/gi, "").replace(/```/g, "").trim();
+         updateSelectedProp("bedrockCode", text);
+         setAiPrompt("");
+      } else {
+         throw new Error("Invalid response format");
       }
     } catch (err) {
-      console.error(err);
+      console.error("AI Generation Error:", err);
+      alert("Failed to generate logic via AI. Ensure your API key is correct and valid.");
     } finally {
       setIsGenerating(false);
     }
@@ -102,6 +139,39 @@ export default function App() {
 }`;
   };
 
+  const generateToggleJSON = () => {
+     return `{
+  "namespace": "hud",
+  "custom_toggle_button": {
+    "type": "button",
+    "size": [100, 20],
+    "anchor_from": "${toggleLocation === 'inventory' ? 'bottom_middle' : 'top_right'}",
+    "anchor_to": "${toggleLocation === 'inventory' ? 'bottom_middle' : 'top_right'}",
+    "offset": [0, -20],
+    "default_control": "default",
+    "hover_control": "hover",
+    "pressed_control": "pressed",
+    "controls": [
+      { "default": { "type": "image", "texture": "textures/ui/button_default" } },
+      { "hover": { "type": "image", "texture": "textures/ui/button_hover" } },
+      { "pressed": { "type": "image", "texture": "textures/ui/button_pressed" } }
+    ],
+    "button_mappings": [
+      {
+        "from_button_id": "button.menu_select",
+        "to_button_id": "button.open_custom_gui",
+        "mapping_type": "pressed"
+      }${toggleKeybind ? `,
+      {
+        "from_button_id": "button.menu_custom_${toggleKeybind.toLowerCase()}",
+        "to_button_id": "button.open_custom_gui",
+        "mapping_type": "pressed"
+      }` : ''}
+    ]
+  }
+}`;
+  };
+
   const handlePointerDown = (e: React.PointerEvent, id: string) => {
     e.stopPropagation();
     setSelectedId(id);
@@ -109,7 +179,6 @@ export default function App() {
     const el = elements.find(el => el.id === id);
     if (el) {
       setIsDragging(true);
-      // Ensure we drag from the mouse pointer's relative position
       const parentRect = canvasRef.current?.getBoundingClientRect();
       if (parentRect) {
         const mouseX = e.clientX - parentRect.left;
@@ -132,7 +201,7 @@ export default function App() {
         if (el.id === selectedId) {
           return {
             ...el,
-            x: Math.max(0, Math.round((mouseX - dragOffset.x) / 10) * 10), // snap to 10px grid
+            x: Math.max(0, Math.round((mouseX - dragOffset.x) / 10) * 10),
             y: Math.max(0, Math.round((mouseY - dragOffset.y) / 10) * 10)
           };
         }
@@ -149,8 +218,8 @@ export default function App() {
     const newEl: EditorElement = {
       id: Math.random().toString(36).substr(2, 9),
       type,
-      x: 100,
-      y: 100,
+      x: 350,
+      y: 250,
       width: type === 'label' ? 100 : 150,
       height: type === 'label' ? 20 : 40,
       name: `New ${type}`,
@@ -198,27 +267,88 @@ export default function App() {
             <span className="font-bold text-sm tracking-tight uppercase">BlockGui.Edu</span>
           </div>
           <div className="h-6 w-[1px] bg-[#444]"></div>
-          <nav className="flex gap-4 text-xs font-medium uppercase tracking-wider text-[#999]">
-            <span onClick={() => setViewMode('designer')} className={`cursor-pointer transition-colors ${viewMode === 'designer' ? 'text-blue-400 font-bold' : 'hover:text-white'}`}>Designer</span>
-            <span onClick={() => setViewMode('export')} className={`cursor-pointer transition-colors ${viewMode === 'export' ? 'text-blue-400 font-bold' : 'hover:text-white'}`}>Code & Export</span>
-          </nav>
+          {appPhase === 'builder' && (
+             <nav className="flex gap-4 text-xs font-medium uppercase tracking-wider text-[#999]">
+               <span onClick={() => setViewMode('designer')} className={`cursor-pointer transition-colors ${viewMode === 'designer' ? 'text-blue-400 font-bold' : 'hover:text-white'}`}>Designer</span>
+               <span onClick={() => setViewMode('export')} className={`cursor-pointer transition-colors ${viewMode === 'export' ? 'text-blue-400 font-bold' : 'hover:text-white'}`}>Code & Export</span>
+             </nav>
+          )}
         </div>
         <div className="flex items-center gap-3">
-          <div className="text-[10px] text-[#777] font-mono mr-4">PROJECT: attribute_levelup.json</div>
-          <button className="px-3 py-1 bg-[#444] text-white text-[11px] font-bold uppercase rounded hover:bg-[#555] transition-colors flex items-center gap-1">
-             <Play className="w-3 h-3" />
-             Preview
+          <button onClick={() => setShowSettings(true)} className="p-1.5 text-[#aaa] hover:text-white hover:bg-[#333] rounded transition-colors" title="Settings">
+             <Key className="w-4 h-4" />
           </button>
-          <button onClick={() => setViewMode('export')} className="px-3 py-1 bg-[#3498db] text-white text-[11px] font-bold uppercase rounded hover:bg-[#2980b9] transition-colors flex items-center gap-1">
-             <Download className="w-3 h-3" /> Export to Bridge
-          </button>
+          {appPhase === 'builder' && (
+             <>
+               <div className="text-[10px] text-[#777] font-mono mr-4 ml-2">PROJECT: attribute_levelup.json</div>
+               <button className="px-3 py-1 bg-[#444] text-white text-[11px] font-bold uppercase rounded hover:bg-[#555] transition-colors flex items-center gap-1">
+                  <Play className="w-3 h-3" />
+                  Preview
+               </button>
+               <button onClick={() => setViewMode('export')} className="px-3 py-1 bg-[#3498db] text-white text-[11px] font-bold uppercase rounded hover:bg-[#2980b9] transition-colors flex items-center gap-1">
+                  <Download className="w-3 h-3" /> Export to Bridge
+               </button>
+             </>
+          )}
         </div>
       </header>
 
       {/* Main Workspace */}
       <div className="flex-1 flex overflow-hidden">
         
-        {viewMode === 'designer' ? (
+        {appPhase === 'setup' ? (
+           <div className="flex-1 flex flex-col items-center justify-center bg-[#121212] p-8">
+              <div className="max-w-md w-full bg-[#212121] border border-[#333] rounded shadow-2xl p-6">
+                 <h2 className="text-xl font-bold uppercase tracking-wider text-white mb-2">GUI Configuration</h2>
+                 <p className="text-[#888] text-sm mb-6">Before you start building, configure the toggle button that players will use to open your custom GUI.</p>
+                 
+                 <div className="flex flex-col gap-4 mb-8">
+                    <div className="flex flex-col gap-1.5">
+                       <label className="text-[11px] font-bold text-[#aaa] uppercase tracking-wider">Button Location</label>
+                       <select 
+                          value={toggleLocation} 
+                          onChange={(e) => setToggleLocation(e.target.value as 'inventory'|'hud')}
+                          className="bg-[#111] border border-[#333] px-3 py-2 rounded text-white text-sm outline-none focus:border-blue-500"
+                       >
+                          <option value="inventory">Inventory Screen</option>
+                          <option value="hud">Player HUD (Regular POV)</option>
+                       </select>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                       <label className="text-[11px] font-bold text-[#aaa] uppercase tracking-wider">Button Name</label>
+                       <input 
+                          type="text" 
+                          value={toggleName} 
+                          onChange={(e) => setToggleName(e.target.value)}
+                          placeholder="e.g. Open Stats"
+                          className="bg-[#111] border border-[#333] px-3 py-2 rounded text-white text-sm outline-none focus:border-blue-500"
+                       />
+                    </div>
+
+                     <div className="flex flex-col gap-1.5">
+                       <label className="text-[11px] font-bold text-[#aaa] uppercase tracking-wider">Open Keybind (Optional)</label>
+                       <input 
+                          type="text" 
+                          value={toggleKeybind} 
+                          onChange={(e) => setToggleKeybind(e.target.value.toUpperCase().charAt(0))}
+                          maxLength={1}
+                          placeholder="e.g. H"
+                          className="bg-[#111] border border-[#333] px-3 py-2 rounded text-white text-sm outline-none focus:border-blue-500 uppercase"
+                       />
+                       <span className="text-[10px] text-[#555]">This adds [{toggleKeybind || '?'}] to your button label.</span>
+                    </div>
+                 </div>
+
+                 <button 
+                    onClick={handleStartBuilder}
+                    className="w-full py-3 bg-[#4CAF50] text-white font-bold uppercase tracking-wide rounded hover:bg-[#45a049] transition-colors shadow-lg"
+                 >
+                    Start Creating GUI
+                 </button>
+              </div>
+           </div>
+        ) : viewMode === 'designer' ? (
           <>
             {/* Left Sidebar: Assets & Layers */}
         <aside className="w-64 border-r border-[#333] flex flex-col bg-[#212121] shrink-0">
@@ -284,7 +414,7 @@ export default function App() {
           <div 
              ref={canvasRef}
              className="relative w-[800px] h-[500px] bg-transparent border border-[#333] overflow-hidden"
-             onPointerDown={() => setSelectedId(null)} // deselect on map background click
+             onPointerDown={() => setSelectedId(null)}
           >
              {elements.map(el => {
                 const isSelected = selectedId === el.id;
@@ -309,15 +439,15 @@ export default function App() {
                         ${el.type === 'image' ? 'bg-[#333] opacity-80' : ''}
                      `}
                    >
-                     {/* Element Content Rendering */}
                      {el.type === 'label' && (
                         <div className="w-full h-full flex items-center font-mono text-[#404040]" style={{fontSize: '16px', textShadow: '2px 2px 0px #eee'}}>{el.props.text || 'Label'}</div>
                      )}
                      {el.type === 'button' && (
-                         <div className="w-full h-full flex items-center justify-center font-mono text-[#404040] text-sm pointer-events-none select-none">{el.name}</div>
+                         <div className="w-full h-full flex items-center justify-center font-mono text-[#404040] text-sm pointer-events-none select-none">
+                            {el.props.text ? el.props.text : el.name}
+                         </div>
                      )}
                      
-                     {/* Selection Resize Handles (Visual Only) */}
                      {isSelected && (
                         <>
                            <div className="absolute -top-1 -left-1 w-2 h-2 bg-blue-500 border border-white" />
@@ -331,14 +461,12 @@ export default function App() {
              })}
           </div>
 
-          {/* Floating Toolbar */}
           <div className="absolute left-6 top-6 flex flex-col gap-1 z-20 shadow-xl">
              <div className="w-10 h-10 bg-[#1e1e1e] border-2 border-blue-500 rounded flex items-center justify-center text-blue-400 cursor-pointer shadow-[0_0_10px_rgba(59,130,246,0.3)]" title="Selection Tool">
                <MousePointer2 className="w-4 h-4 text-blue-400" />
             </div>
           </div>
 
-          {/* Viewport Label */}
           <div className="absolute bottom-4 left-4 flex gap-4 pointer-events-none">
              <div className="text-[10px] text-[#777] uppercase tracking-widest font-mono bg-[#111]/80 px-2 py-1 rounded backdrop-blur">
                Preview: GUI_Scale_Modern
@@ -349,7 +477,6 @@ export default function App() {
           </div>
         </main>
 
-        {/* Right Sidebar: Properties */}
         <aside className="w-72 border-l border-[#333] bg-[#212121] flex flex-col shrink-0">
           <div className="p-3 border-b border-[#333] bg-[#252525]">
             <div className="text-[11px] font-bold text-white flex items-center justify-between uppercase">
@@ -443,12 +570,11 @@ export default function App() {
 
                      <div className="h-[1px] bg-[#333] w-full" />
 
-                     {/* Specific Properties based on Type */}
-                     {selectedElement.type === 'label' && (
+                     {(selectedElement.type === 'label' || selectedElement.type === 'button') && (
                         <div className="flex flex-col gap-2">
-                           <span className="text-[10px] font-bold text-[#666] uppercase">Label Content</span>
+                           <span className="text-[10px] font-bold text-[#666] uppercase">Text Content</span>
                             <div className="flex flex-col gap-1">
-                              <label className="text-[9px] text-[#888]">Text</label>
+                              <label className="text-[9px] text-[#888]">Label Text</label>
                               <input 
                                  type="text" 
                                  value={selectedElement.props.text || ''} 
@@ -483,7 +609,7 @@ export default function App() {
                          </button>
                       </div>
 
-                     {/* JSON Bindings Simulator */}
+                     {/* JSON Context */}
                      <div className="h-[1px] bg-[#333] w-full" />
                      <div className="flex flex-col gap-2">
                         <div className="flex items-center justify-between">
@@ -540,6 +666,13 @@ export default function App() {
                      <span>RP/ui/attribute_levelup.json</span>
                   </div>
                   <div 
+                     onClick={() => setSelectedFile('RP/ui/hud_screen.json')}
+                     className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === 'RP/ui/hud_screen.json' ? 'bg-[#3498db]/20 text-blue-400' : 'text-[#aaa] hover:bg-[#333]'}`}
+                  >
+                     <FileJson className="w-3.5 h-3.5" />
+                     <span>RP/ui/hud_screen.json</span>
+                  </div>
+                  <div 
                      onClick={() => setSelectedFile('RP/texts/en_US.lang')}
                      className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === 'RP/texts/en_US.lang' ? 'bg-[#3498db]/20 text-blue-400' : 'text-[#aaa] hover:bg-[#333]'}`}
                   >
@@ -551,7 +684,12 @@ export default function App() {
                  <button onClick={() => {
                      let text = "";
                      if (selectedFile === 'RP/ui/attribute_levelup.json') text = generateBridgeJSON();
-                     if (selectedFile === 'RP/texts/en_US.lang') text = `## Text bindings for attribute_levelup.json\n\n${elements.filter(e=>e.type==='label').map(e => `label.${e.name.replace(/ /g, '_').toLowerCase()} = ${e.props.text}`).join('\n')}`;
+                     if (selectedFile === 'RP/ui/hud_screen.json') text = generateToggleJSON();
+                     if (selectedFile === 'RP/texts/en_US.lang') {
+                        const labels = elements.filter(e=>e.type==='label').map(e => `label.${e.name.replace(/ /g, '_').toLowerCase()} = ${e.props.text}`).join('\n');
+                        const toggleStr = `button.open_custom_gui = ${toggleName} [${toggleKeybind || 'Touch'}]`;
+                        text = `## Text bindings for attribute_levelup.json\n\n${toggleStr}\n${labels}`;
+                     }
                      navigator.clipboard.writeText(text);
                      alert(`Copied ${selectedFile} to clipboard!`);
                  }} className="w-full py-2 bg-[#333] hover:bg-[#444] text-white text-xs font-bold uppercase rounded transition-colors border border-[#555]">
@@ -566,7 +704,12 @@ export default function App() {
                <div className="flex-1 p-4 overflow-auto custom-scrollbar">
                   <pre className="text-[12px] font-mono text-[#dcdcaa] leading-relaxed">
                      {selectedFile === 'RP/ui/attribute_levelup.json' && generateBridgeJSON()}
-                     {selectedFile === 'RP/texts/en_US.lang' && `## Text bindings for attribute_levelup.json\n\n${elements.filter(e=>e.type==='label').map(e => `label.${e.name.replace(/ /g, '_').toLowerCase()} = ${e.props.text}`).join('\n')}`}
+                     {selectedFile === 'RP/ui/hud_screen.json' && generateToggleJSON()}
+                     {selectedFile === 'RP/texts/en_US.lang' && (
+                        `## Text bindings for attribute_levelup.json\n\n` + 
+                        `button.open_custom_gui = ${toggleName} [${toggleKeybind || 'Touch'}]\n` +
+                        `${elements.filter(e=>e.type==='label').map(e => `label.${e.name.replace(/ /g, '_').toLowerCase()} = ${e.props.text}`).join('\n')}`
+                     )}
                   </pre>
                </div>
             </main>
@@ -579,16 +722,43 @@ export default function App() {
         <div className="flex gap-4">
           <div className="flex items-center gap-1.5">
             <CheckCircle2 className="w-3 h-3 text-green-500" />
-            <span className="text-[10px] text-[#888] font-medium tracking-wide">Connected to Bridge IDE.</span>
+            <span className="text-[10px] text-[#888] font-medium tracking-wide">Ready for Bridge IDE.</span>
           </div>
-          <div className="h-4 w-[1px] bg-[#333]"></div>
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] text-[#555] font-mono">X: {selectedElement ? selectedElement.x : '-'}</span>
-            <span className="text-[10px] text-[#555] font-mono">Y: {selectedElement ? selectedElement.y : '-'}</span>
-          </div>
+          {appPhase === 'builder' && selectedElement && (
+            <>
+               <div className="h-4 w-[1px] bg-[#333]"></div>
+               <div className="flex items-center gap-3">
+               <span className="text-[10px] text-[#555] font-mono">X: {selectedElement.x}</span>
+               <span className="text-[10px] text-[#555] font-mono">Y: {selectedElement.y}</span>
+               </div>
+            </>
+          )}
         </div>
-        <div className="text-[10px] text-[#666] tracking-wider uppercase">Drag & Drop GUI Builder | v1.0.0</div>
+        <div className="text-[10px] text-[#666] tracking-wider uppercase">Drag & Drop GUI Builder | v1.1.0</div>
       </footer>
+
+      {showSettings && (
+         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+            <div className="w-full max-w-sm bg-[#212121] border border-[#333] rounded shadow-2xl p-6">
+               <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-white">API Settings</h3>
+                  <button onClick={() => setShowSettings(false)} className="text-[#888] hover:text-white"><X className="w-5 h-5"/></button>
+               </div>
+               <div className="flex flex-col gap-2 mb-6">
+                  <label className="text-[11px] font-bold text-[#aaa] uppercase tracking-wider">Gemini API Key</label>
+                  <input 
+                     type="password"
+                     value={apiKey}
+                     onChange={(e) => saveApiKey(e.target.value)}
+                     placeholder="AIzaSy..."
+                     className="bg-[#111] border border-[#333] px-3 py-2 rounded text-white text-sm outline-none focus:border-blue-500 font-mono"
+                  />
+                  <p className="text-[10px] text-[#555] leading-tight">Key is stored locally in your browser. Required to generate Bedrock JSON logic with AI.</p>
+               </div>
+               <button onClick={() => setShowSettings(false)} className="w-full py-2 bg-[#3498db] text-white font-bold uppercase rounded hover:bg-[#2980b9] text-xs">Save & Close</button>
+            </div>
+         </div>
+      )}
 
       <style>{`
         .custom-scrollbar::-webkit-scrollbar {
