@@ -37,9 +37,10 @@ interface EditorElement {
   height: number;
   name: string;
   props: Record<string, string>;
+  variableActions?: { varId: string; amount: number }[];
 }
 
-type ViewMode = 'designer' | 'book_editor' | 'export';
+type ViewMode = 'designer' | 'variables' | 'export';
 type AppPhase = 'setup' | 'builder';
 
 const generateUUID = () => {
@@ -49,16 +50,38 @@ const generateUUID = () => {
   });
 };
 
+const MC_EVENTS = [
+  'blockBreak', 'blockPlace', 'buttonPush', 'chatSend', 'entityDie', 'entityHurt', 
+  'entityHitEntity', 'entityHitBlock', 'itemCompleteUse', 'itemReleaseUse', 
+  'itemStartUse', 'itemUse', 'itemUseOn', 'playerBreakBlock', 'playerPlaceBlock', 
+  'playerJoin', 'playerLeave', 'playerSpawn', 'weatherChange'
+];
+
+interface VariableIncrement {
+  event: string;
+  amount: number;
+}
+
+interface Variable {
+  id: string;
+  name: string;
+  scope: 'player' | 'global';
+  min: number | null;
+  max: number | null;
+  increments: VariableIncrement[];
+}
+
 export default function App() {
+  const [variables, setVariables] = useState<Variable[]>([]);
   const [bpUuid1, setBpUuid1] = useState(generateUUID);
   const [bpUuid2, setBpUuid2] = useState(generateUUID);
   const [bpUuid3, setBpUuid3] = useState(generateUUID);
   const [rpUuid1, setRpUuid1] = useState(generateUUID);
   const [rpUuid2, setRpUuid2] = useState(generateUUID);
   const [appPhase, setAppPhase] = useState<AppPhase>('setup');
-  const [toggleLocation, setToggleLocation] = useState<'inventory' | 'book'>('inventory');
-  const [toggleName, setToggleName] = useState('Open Custom GUI');
-  const [toggleKeybind, setToggleKeybind] = useState('H');
+  const [openedFrom, setOpenedFrom] = useState<'book' | 'modded_item'>('book');
+  const [moddedItemName, setModdedItemName] = useState('my_mod:magic_wand');
+
   
   const [guiElements, setGuiElements] = useState<EditorElement[]>([]);
   const [bookElements, setBookElements] = useState<EditorElement[]>([]);
@@ -67,7 +90,7 @@ export default function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [viewMode, setViewMode] = useState<ViewMode>('designer');
-  const [selectedFile, setSelectedFile] = useState<string>('RP/ui/attribute_levelup.json');
+  const [selectedFile, setSelectedFile] = useState<string>('BP/scripts/main.js');
   
   const elements = viewMode === 'book_editor' ? bookElements : guiElements;
   const setElements = (value: React.SetStateAction<EditorElement[]>) => {
@@ -88,15 +111,11 @@ export default function App() {
 
   const handleStartBuilder = () => {
     setGuiElements([
-      { id: Math.random().toString(36).substr(2, 9), type: 'image', x: 200, y: 150, width: 400, height: 220, name: 'Main Background', props: { texture: 'textures/gui/new_bg.png' } },
-      { id: Math.random().toString(36).substr(2, 9), type: 'button', x: 575, y: 155, width: 20, height: 20, name: 'Close Button', props: { text: 'X', action: 'close_gui' } }
+      { id: Math.random().toString(36).substr(2, 9), type: 'panel', x: 200, y: 150, width: 400, height: 220, name: 'Main Background', props: { texture: 'textures/gui/new_bg.png' } },
+      { id: Math.random().toString(36).substr(2, 9), type: 'label', x: 200, y: 100, width: 400, height: 20, name: 'Title', props: { text: 'My Custom UI' } },
+      { id: Math.random().toString(36).substr(2, 9), type: 'button', x: 200, y: 250, width: 200, height: 30, name: 'Close Button', props: { text: 'Close', action: 'close_gui' } }
     ]);
-    if (toggleLocation === 'book') {
-       setBookElements([
-         { id: Math.random().toString(36).substr(2, 9), type: 'button', x: 20, y: 20, width: 100, height: 20, name: 'Open GUI Toggle', props: { text: toggleName } }
-       ]);
-    }
-    setSelectedFile('README.txt');
+    setSelectedFile('BP/scripts/main.js');
     setAppPhase('builder');
   };
 
@@ -143,222 +162,6 @@ export default function App() {
     } finally {
       setIsGenerating(false);
     }
-  };
-
-  const generateBridgeJSON = () => {
-    const controls = guiElements.map(el => {
-      let code = el.props.bedrockCode;
-      let extraCode = "";
-      if (code && code.startsWith("{") && code.endsWith("}")) {
-         extraCode = code.slice(1, -1).trim();
-      }
-      
-      let typeField = `"type": "${el.type}",`;
-      let elName = el.name.replace(/ /g, '_').toLowerCase();
-      
-      if (el.type === 'button') {
-        typeField = "";
-        elName += "@common_buttons.light_text_button";
-      } else if (el.type === 'panel' && el.props.texture) {
-        typeField = `"type": "image",`;
-      } else if (el.type === 'dropdown') {
-        typeField = `"type": "dropdown",`; // NOTE: generic for json
-        elName += "@common.dropdown";
-      } else if (el.type === 'slider') {
-        typeField = `"type": "slider",`;
-        elName += "@common.slider";
-      } else if (el.type === 'textfield') {
-        typeField = "";
-        elName += "@common.text_edit_box";
-      } else if (el.type === 'toggle') {
-        typeField = "";
-        elName += "@common_toggles.light_text_toggle";
-      }
-      
-      return `
-      {
-        "${elName}": {
-          ${typeField !== '""' ? typeField : ''}
-          "size": [${el.width}, ${el.height}],
-          "offset": [${el.x}, ${el.y}],
-          "anchor_from": "top_left",
-          "anchor_to": "top_left"${el.type === 'label' ? `,\n          "text": "${el.props.text || ''}"` : ''}${el.props.texture ? `,\n          "texture": "${el.props.texture}"` : ''}${extraCode ? ',\n          ' + extraCode.replace(/\n      /g, '\n          ') : ''}${el.type === 'button' ? `,\n          "$pressed_button_name": "button.${el.name.replace(/ /g, '_').toLowerCase()}",\n          "$button_text": "label.${el.name.replace(/ /g, '_').toLowerCase()}"` : ''}
-        }
-      }`;
-    }).join(",");
-
-    return `{
-  "namespace": "attribute_levelup",
-  "main_screen": {
-    "type": "panel",
-    "controls": [${controls}
-    ]
-  }
-}`;
-  };
-
-  const generateToggleJSON = () => {
-    return `{
-  "namespace": "crafting",
-
-  "recipe_inventory_screen_content@crafting.recipe_inventory_screen_content": {
-    "modifications": [
-      {
-        "array_name": "controls",
-        "operation": "insert_back",
-        "value": [
-          {
-            "custom_gui_toggle@common_toggles.light_text_toggle": {
-              "size": [100, 20],
-              "anchor_from": "top_right",
-              "anchor_to": "top_right",
-              "offset": [-5, 5],
-              "layer": 900,
-              "$button_text": "label.open_custom_gui",
-              "$toggle_name": "${toggleName}",
-              "$toggle_state_binding_name": "#is_custom_gui_open",
-              "$toggle_group_default_selected": 0
-            }
-          },
-          {
-            "custom_gui_container": {
-              "type": "panel",
-              "layer": 950,
-              "controls": [
-                {
-                  "my_gui@attribute_levelup.main_screen": {}
-                }
-              ],
-              "bindings": [
-                {
-                  "binding_type": "view",
-                  "source_control_name": "custom_gui_toggle",
-                  "source_property_name": "(#toggle_state)",
-                  "target_property_name": "#visible"
-                }
-              ]
-            }
-          }
-        ]
-      }
-    ]
-  }
-}`;
-  };
-
-  const generateBookJSON = () => {
-    const controls = bookElements.map(el => {
-      let code = el.props.bedrockCode;
-      let extraCode = "";
-      if (code && code.startsWith("{") && code.endsWith("}")) {
-         extraCode = code.slice(1, -1).trim();
-      }
-      
-      if (el.name.toLowerCase().includes('toggle')) {
-        return `
-          {
-            "${el.name.replace(/ /g, '_').toLowerCase()}@common_toggles.light_text_toggle": {
-              "size": [${el.width}, ${el.height}],
-              "offset": [${el.x}, ${el.y}],
-              "layer": 300,
-              "anchor_from": "top_left",
-              "anchor_to": "top_left",
-              "$button_text": "label.${el.name.replace(/ /g, '_').toLowerCase()}",
-              "$toggle_name": "custom_gui_toggle_state",
-              "$toggle_state_binding_name": "#is_custom_gui_open",
-              "$toggle_group_default_selected": 0${extraCode ? ',\n              ' + extraCode.replace(/\n      /g, '\n              ') : ''}
-            }
-          }`;
-      }
-      
-      let typeField = `"type": "${el.type}",`;
-      let elName = el.name.replace(/ /g, '_').toLowerCase();
-      
-      if (el.type === 'button') {
-        typeField = "";
-        elName += "@common_buttons.light_text_button";
-      } else if (el.type === 'panel' && el.props.texture) {
-        typeField = `"type": "image",`;
-      } else if (el.type === 'dropdown') {
-        typeField = `"type": "dropdown",`; // NOTE: generic for json
-        elName += "@common.dropdown";
-      } else if (el.type === 'slider') {
-        typeField = `"type": "slider",`;
-        elName += "@common.slider";
-      } else if (el.type === 'textfield') {
-        typeField = "";
-        elName += "@common.text_edit_box";
-      } else if (el.type === 'toggle') {
-        typeField = "";
-        elName += "@common_toggles.light_text_toggle";
-      }
-      
-      return `
-          {
-            "${elName}": {
-              ${typeField !== '""' ? typeField : ''}
-              "size": [${el.width}, ${el.height}],
-              "offset": [${el.x}, ${el.y}],
-              "layer": 300,
-              "anchor_from": "top_left",
-              "anchor_to": "top_left"${el.type === 'label' ? `,\n              "text": "${el.props.text || ''}"` : ''}${el.props.texture ? `,\n              "texture": "${el.props.texture}"` : ''}${extraCode ? ',\n              ' + extraCode.replace(/\n      /g, '\n              ') : ''}${el.type === 'button' ? `,\n              "$pressed_button_name": "button.${el.name.replace(/ /g, '_').toLowerCase()}",\n              "$button_text": "label.${el.name.replace(/ /g, '_').toLowerCase()}"` : ''}
-            }
-          }`;
-    }).join(",");
-
-    const toggleEl = bookElements.find(el => el.name.toLowerCase().includes('toggle'));
-    const toggleControlName = toggleEl ? toggleEl.name.replace(/ /g, '_').toLowerCase() : 'custom_gui_toggle';
-
-    return `{
-  "namespace": "book",
-
-  "book_screen_content@book.book_screen_content": {
-    "modifications": [
-      {
-        "array_name": "controls",
-        "operation": "insert_back",
-        "value": [
-          {
-            "custom_book_overlay_container": {
-              "type": "panel",
-              "layer": 900,
-              "controls": [${controls}
-              ]
-            }
-          },
-          {
-            "custom_gui_container": {
-              "type": "panel",
-              "layer": 950,
-              "controls": [
-                {
-                  "my_gui@attribute_levelup.main_screen": {}
-                }
-              ],
-              "bindings": [
-                {
-                  "binding_type": "view",
-                  "source_control_name": "${toggleControlName}",
-                  "source_property_name": "(#toggle_state)",
-                  "target_property_name": "#visible"
-                }
-              ]
-            }
-          }
-        ]
-      }
-    ]
-  }
-}`;
-  };
-
-  const generateUIDefsJSON = () => {
-    return `{
-  "ui_defs": [
-    "ui/attribute_levelup.json",
-    "ui/${toggleLocation === 'book' ? 'custom_book_injection.json' : 'custom_inventory_injection.json'}"
-  ]
-}`;
   };
 
   const generateBPManifest = () => {
@@ -458,6 +261,17 @@ export default function App() {
 
     let logicCode = "";
 
+    const generateVarActionCode = (btnActions?: {varId: string; amount: number}[]) => {
+        if (!btnActions || btnActions.length === 0) return '';
+        return btnActions.map(action => {
+            let v = variables.find(v => v.id === action.varId);
+            if (!v) return '';
+            return `let val = getVar("${v.scope}", "${v.name}", player);
+      setVar("${v.scope}", "${v.name}", player, val + (${action.amount}), ${v.min !== null ? v.min : 'null'}, ${v.max !== null ? v.max : 'null'});
+      player.sendMessage("§a${v.name} is now: " + getVar("${v.scope}", "${v.name}", player));`;
+        }).join('\n      ');
+    };
+
     if (isModal) {
       const formFields = inputs.map((input, index) => {
          const name = input.props.text || input.name;
@@ -492,7 +306,7 @@ export default function App() {
       formBuilder += `\n  ${formFields}`;
       formBuilder += `\n  form.submitButton("${submitText}");`;
 
-      logicCode = `const formValues = response.formValues;\n    player.sendMessage("Form submitted! Values: " + JSON.stringify(formValues));`;
+      logicCode = `const formValues = response.formValues;\n    player.sendMessage("Form submitted! Values: " + JSON.stringify(formValues));\n      ${submitBtn ? generateVarActionCode(submitBtn.variableActions) : ''}`;
     } else {
       const btnCode = buttons.map((btn) => {
           let text = btn.props.text || btn.name;
@@ -505,27 +319,73 @@ export default function App() {
       }
       
       logicCode = buttons.map((btn, i) => {
+          let actionCode = generateVarActionCode(btn.variableActions);
           return `if (response.selection === ${i}) {
       // Player clicked ${btn.props.text || btn.name}
       player.sendMessage("You clicked ${btn.props.text || btn.name}!");
+      ${actionCode}
     }`;
       }).join(" else ");
     }
+
+    const triggerEventCode = variables.map(v => {
+       return v.increments.map(inc => {
+          return `world.afterEvents.${inc.event}.subscribe((event) => {
+  let p = event.player || event.sourceEntity || event.source;
+  if (${v.scope === 'player' ? `p && p.typeId === 'minecraft:player'` : `true`}) {
+    let val = getVar("${v.scope}", "${v.name}", p);
+    setVar("${v.scope}", "${v.name}", p, val + (${inc.amount}), ${v.min !== null ? v.min : 'null'}, ${v.max !== null ? v.max : 'null'});
+  }
+});`;
+       }).join('\n\n');
+    }).filter(Boolean).join('\n\n');
+
+    const bookGiveCode = openedFrom === 'book' ? `
+// Automatically give GUI Book to players on first join
+world.afterEvents.playerSpawn.subscribe((event) => {
+  if (event.initialSpawn) {
+     const player = event.player;
+     system.run(() => {
+        if (!player.hasTag("has_gui_book")) {
+            player.runCommand("give @s custom:gui_book 1");
+            player.addTag("has_gui_book");
+        }
+     });
+  }
+});
+` : '';
 
     return `import { world, system } from "@minecraft/server";
 import { ${formType} } from "@minecraft/server-ui";
 
 /**
- * NEW RECOMMENDATION: JSON UI is deprecated and breaks on modern versions!
- * Use the Script API to build durable, hardcoded Ore UI screens.
+ * Script API Custom UI Generated Code
  * 
  * To use this script, place it in: Behavior_Pack/scripts/main.js
- * Make sure your manifest.json has the "@minecraft/server" and "@minecraft/server-ui" dependencies!
+ * Dependencies in manifest.json: "@minecraft/server" , "@minecraft/server-ui"
  */
 
-// Example: Open UI when a player uses a Stick
+// --- Dynamic Variables Helper Functions ---
+function getVar(scope, varName, player) {
+   let source = scope === 'player' ? player : world;
+   return source.getDynamicProperty(varName) ?? 0;
+}
+
+function setVar(scope, varName, player, val, min, max) {
+   let source = scope === 'player' ? player : world;
+   if (min !== null && val < min) val = min;
+   if (max !== null && val > max) val = max;
+   source.setDynamicProperty(varName, val);
+}
+
+// --- Variable Event Triggers ---
+${triggerEventCode}
+
+${bookGiveCode}
+
+// --- UI Activation ---
 world.beforeEvents.itemUse.subscribe((event) => {
-  if (event.itemStack.typeId === "minecraft:stick") { // Change this to your desired item!
+  if (event.itemStack.typeId === "${openedFrom === 'book' ? 'custom:gui_book' : moddedItemName}") {
     const player = event.source;
     
     // UI must be shown on the next tick
@@ -546,44 +406,6 @@ function showCustomUI(player) {
     console.error(e);
   });
 }
-`;
-  };
-
-  const getReadmeText = () => {
-    const filename = toggleLocation === 'book' ? 'custom_book_injection.json' : 'custom_inventory_injection.json';
-    const targetScreen = toggleLocation === 'book' ? 'book_screen.json' : 'inventory_screen.json';
-    
-     return `==========================================
-CRITICAL BEDROCK UI MODDING RULES
-==========================================
-
-Why didn't your hud_screen button or keybind work?
-1. MOUSE CURSOR: On PC, you cannot click the HUD because your mouse is locked to the camera. You MUST place your button inside a screen where the cursor is active.
-2. FAKE KEYBINDS: Bedrock JSON UI does not allow binding custom keys (like "H") or making up actions.
-3. STANDALONE SCREENS: You cannot just make a new file called "my_screen.json" and expect it to magically open. The game only knows vanilla screens.
-
-THE SOLUTION (INJECTION VIA MODIFICATIONS):
-To make your GUI work purely with JSON using Bridge IDE WITHOUT destroying your vanilla GUI:
-
-STEP 1: NEVER NAME IT '${targetScreen}'
-If you name your file exactly '${targetScreen}', Minecraft completely replaces the vanilla file. Since this snippet only contains the modification block, all the other vanilla panels are lost, causing your screen to be completely empty!
-
-STEP 2: ADD IT TO BRIDGE SAFELY
-1. In Bridge IDE, create a **NEW** file in your 'ui' folder with a custom name, for example: 'RP/ui/${filename}'
-2. Copy the ENTIRE contents of the 'RP/ui/${filename}' tab and paste it into that new file inside Bridge.
-3. Bridge IDE will automatically detect this new UI file and add it to 'ui_defs.json' behind the scenes.
-4. Because the file has a different name, the game loads the full real screen first, then safely applies your modification on top!
-
-STEP 3: REGISTER IN _ui_defs.json
-1. Bedrock UI files will NOT load automatically! 
-2. You must open or create 'RP/ui/_ui_defs.json'
-3. Copy the 'RP/ui/_ui_defs.json' file contents from this app and paste them!
-4. *NOTE:* Bridge IDE may show yellow tooltips ("expected object" / "matched more than one schema"). These are just Bridge schema bugs! If it's in '_ui_defs.json', it will work perfectly in-game.
-
-STEP 4: ADD YOUR CUSTOM GUI FILE
-1. In Bridge, make sure you also created 'RP/ui/attribute_levelup.json'.
-2. Paste the 'RP/ui/attribute_levelup.json (Custom GUI)' code from this tool into that new file.
-3. Don't forget your 'en_US.lang' texts! 'README.txt' isn't needed in Bridge.
 `;
   };
 
@@ -685,9 +507,7 @@ STEP 4: ADD YOUR CUSTOM GUI FILE
           {appPhase === 'builder' && (
              <nav className="flex gap-4 text-xs font-medium uppercase tracking-wider text-[#999]">
                <span onClick={() => setViewMode('designer')} className={`cursor-pointer transition-colors ${viewMode === 'designer' ? 'text-blue-400 font-bold' : 'hover:text-white'}`}>GUI Designer</span>
-               {toggleLocation === 'book' && (
-                 <span onClick={() => setViewMode('book_editor')} className={`cursor-pointer transition-colors ${viewMode === 'book_editor' ? 'text-blue-400 font-bold' : 'hover:text-white'}`}>Book Editor</span>
-               )}
+               <span onClick={() => setViewMode('variables')} className={`cursor-pointer transition-colors ${viewMode === 'variables' ? 'text-blue-400 font-bold' : 'hover:text-white'}`}>Variables</span>
                <span onClick={() => setViewMode('export')} className={`cursor-pointer transition-colors ${viewMode === 'export' ? 'text-blue-400 font-bold' : 'hover:text-white'}`}>Code & Export</span>
              </nav>
           )}
@@ -718,32 +538,33 @@ STEP 4: ADD YOUR CUSTOM GUI FILE
            <div className="flex-1 flex flex-col items-center justify-center bg-[#121212] p-8">
               <div className="max-w-md w-full bg-[#212121] border border-[#333] rounded shadow-2xl p-6">
                  <h2 className="text-xl font-bold uppercase tracking-wider text-white mb-2">GUI Configuration</h2>
-                 <p className="text-[#aa4444] text-xs font-bold mb-2 uppercase tracking-wide">⚠️ Bedrock Limitation</p>
-                 <p className="text-[#888] text-sm mb-6">On PC, the mouse cursor is locked inside the HUD. You also cannot create "fake" keybinds. Because of this, custom GUIs must be injected into an existing screen that uses a cursor (like the Inventory Screen).</p>
+                 <p className="text-[#888] text-sm mb-6">Configure how your custom Mod UI is accessed in-game by the player.</p>
                  
                  <div className="flex flex-col gap-4 mb-8">
                     <div className="flex flex-col gap-1.5">
-                       <label className="text-[11px] font-bold text-[#aaa] uppercase tracking-wider">Button Location</label>
+                       <label className="text-[11px] font-bold text-[#aaa] uppercase tracking-wider">GUI Opened From</label>
                        <select 
-                          value={toggleLocation} 
-                          onChange={(e) => setToggleLocation(e.target.value as 'inventory'|'book')}
+                          value={openedFrom} 
+                          onChange={(e) => setOpenedFrom(e.target.value as 'book' | 'modded_item')}
                           className="bg-[#111] border border-[#333] px-3 py-2 rounded text-white text-sm outline-none focus:border-blue-500"
                        >
-                          <option value="inventory">Inventory Screen (Recommended)</option>
-                          <option value="book">Book Screen (Item)</option>
+                          <option value="book">Book (Given to all on spawn)</option>
+                          <option value="modded_item">Modded Item</option>
                        </select>
                     </div>
 
-                    <div className="flex flex-col gap-1.5">
-                       <label className="text-[11px] font-bold text-[#aaa] uppercase tracking-wider">Toggle Button Name</label>
-                       <input 
-                          type="text" 
-                          value={toggleName} 
-                          onChange={(e) => setToggleName(e.target.value)}
-                          placeholder="e.g. Open Stats"
-                          className="bg-[#111] border border-[#333] px-3 py-2 rounded text-white text-sm outline-none focus:border-blue-500"
-                       />
-                    </div>
+                    {openedFrom === 'modded_item' && (
+                       <div className="flex flex-col gap-1.5">
+                          <label className="text-[11px] font-bold text-[#aaa] uppercase tracking-wider">Item Identifier</label>
+                          <input 
+                             type="text" 
+                             value={moddedItemName} 
+                             onChange={(e) => setModdedItemName(e.target.value)}
+                             placeholder="my_namespace:item_id"
+                             className="bg-[#111] border border-[#333] px-3 py-2 rounded text-white text-sm outline-none focus:border-blue-500 font-mono"
+                          />
+                       </div>
+                    )}
                  </div>
 
                  <button 
@@ -754,7 +575,7 @@ STEP 4: ADD YOUR CUSTOM GUI FILE
                  </button>
               </div>
            </div>
-        ) : (viewMode === 'designer' || viewMode === 'book_editor') ? (
+        ) : viewMode === 'designer' ? (
           <>
             {/* Left Sidebar: Assets & Layers */}
         <aside className="w-64 border-r border-[#333] flex flex-col bg-[#212121] shrink-0">
@@ -1127,6 +948,42 @@ STEP 4: ADD YOUR CUSTOM GUI FILE
                         </div>
                      )}
 
+                     {selectedElement.type === 'button' && variables.length > 0 && (
+                        <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-[#333]">
+                           <div className="flex items-center justify-between">
+                             <span className="text-[10px] font-bold text-[#666] uppercase">Variable Modifiers</span>
+                             <button onClick={() => {
+                                 const acts = selectedElement.variableActions || [];
+                                 setElements(prev => prev.map(el => el.id === selectedId ? { ...el, variableActions: [...acts, { varId: variables[0].id, amount: 1 }] } : el));
+                             }} className="text-[#3498db] text-[10px] font-bold uppercase hover:underline">+ Add Action</button>
+                           </div>
+                           <div className="flex flex-col gap-2">
+                              {selectedElement.variableActions?.map((act, idx) => (
+                                 <div key={idx} className="flex gap-1 items-center bg-[#111] p-1.5 rounded border border-[#333]">
+                                    <select value={act.varId} onChange={(e) => {
+                                       const acts = [...(selectedElement.variableActions||[])];
+                                       acts[idx].varId = e.target.value;
+                                       setElements(prev => prev.map(el => el.id === selectedId ? { ...el, variableActions: acts } : el));
+                                    }} className="bg-[#111] border border-[#444] text-[10px] text-white rounded p-1 flex-1">
+                                       {variables.map(v => <option key={v.id} value={v.id}>{v.name} ({v.scope})</option>)}
+                                    </select>
+                                    <span className="text-[#888] text-[10px] font-bold">+</span>
+                                    <input type="number" value={act.amount} onChange={(e) => {
+                                       const acts = [...(selectedElement.variableActions||[])];
+                                       acts[idx].amount = parseFloat(e.target.value);
+                                       setElements(prev => prev.map(el => el.id === selectedId ? { ...el, variableActions: acts } : el));
+                                    }} className="bg-[#111] border border-[#444] text-[10px] text-white rounded p-1 w-12 text-center" />
+                                    <button onClick={() => {
+                                       const acts = [...(selectedElement.variableActions||[])];
+                                       acts.splice(idx, 1);
+                                       setElements(prev => prev.map(el => el.id === selectedId ? { ...el, variableActions: acts } : el));
+                                    }} className="text-red-400 text-[10px] font-bold px-1 hover:text-red-300">X</button>
+                                 </div>
+                              ))}
+                           </div>
+                        </div>
+                     )}
+
                      {(selectedElement.type === 'image' || selectedElement.type === 'panel') && (
                         <div className="flex flex-col gap-2">
                            <span className="text-[10px] font-bold text-[#666] uppercase">Texture Settings</span>
@@ -1215,6 +1072,34 @@ STEP 4: ADD YOUR CUSTOM GUI FILE
                            {selectedElement.type === 'label' && (
                               <>&nbsp;&nbsp;<span className="text-purple-400">"text"</span>: <span className="text-green-400">"{selectedElement.props.text}"</span>,\n</>
                            )}
+                           {selectedElement.type === 'dropdown' && (
+                              <>
+                              &nbsp;&nbsp;<span className="text-purple-400">"options"</span>: <span className="text-green-400">"{selectedElement.props.dropdownOptions || 'Option 1, Option 2'}"</span>,\n
+                              &nbsp;&nbsp;<span className="text-purple-400">"defaultIndex"</span>: <span className="text-[#dcdcaa]">{selectedElement.props.dropdownDefault || '0'}</span>,\n
+                              </>
+                           )}
+                           {selectedElement.type === 'slider' && (
+                              <>
+                              &nbsp;&nbsp;<span className="text-purple-400">"min"</span>: <span className="text-[#dcdcaa]">{selectedElement.props.sliderMin || '0'}</span>,\n
+                              &nbsp;&nbsp;<span className="text-purple-400">"max"</span>: <span className="text-[#dcdcaa]">{selectedElement.props.sliderMax || '100'}</span>,\n
+                              &nbsp;&nbsp;<span className="text-purple-400">"step"</span>: <span className="text-[#dcdcaa]">{selectedElement.props.sliderStep || '1'}</span>,\n
+                              &nbsp;&nbsp;<span className="text-purple-400">"default"</span>: <span className="text-[#dcdcaa]">{selectedElement.props.sliderDefault || '0'}</span>,\n
+                              </>
+                           )}
+                           {selectedElement.type === 'textfield' && (
+                              <>
+                              &nbsp;&nbsp;<span className="text-purple-400">"placeholder"</span>: <span className="text-green-400">"{selectedElement.props.textFieldPlaceholder || 'Placeholder'}"</span>,\n
+                              &nbsp;&nbsp;<span className="text-purple-400">"default"</span>: <span className="text-green-400">"{selectedElement.props.textFieldDefault || ''}"</span>,\n
+                              </>
+                           )}
+                           {selectedElement.type === 'toggle' && (
+                              <>
+                              &nbsp;&nbsp;<span className="text-purple-400">"default"</span>: <span className="text-green-400">{selectedElement.props.toggleDefault === 'true' ? 'true' : 'false'}</span>,\n
+                              </>
+                           )}
+                           {selectedElement.type === 'button' && selectedElement.variableActions && selectedElement.variableActions.length > 0 && (
+                              <>&nbsp;&nbsp;<span className="text-purple-400">"variable_actions"</span>: <span className="text-[#dcdcaa]">{JSON.stringify(selectedElement.variableActions)}</span>,\n</>
+                           )}
                            {selectedElement.props.texture && (
                               <>&nbsp;&nbsp;<span className="text-purple-400">"texture"</span>: <span className="text-green-400">"{selectedElement.props.texture}"</span>,\n</>
                            )}
@@ -1242,6 +1127,113 @@ STEP 4: ADD YOUR CUSTOM GUI FILE
           </div>
         </aside>
        </>
+      ) : viewMode === 'variables' ? (
+         <div className="flex-1 overflow-auto p-6 bg-[#1a1a1a] flex flex-col gap-6">
+            <div className="flex justify-between items-center bg-[#222] p-4 rounded border border-[#333]">
+               <div>
+                  <h3 className="text-lg font-bold text-white uppercase tracking-wider">Dynamic Variables</h3>
+                  <p className="text-xs text-[#888]">Track global and player-specific stats using Bedrock Dynamic Properties/Scoreboards.</p>
+               </div>
+               <button onClick={() => setVariables([...variables, { id: generateUUID(), name: 'newVariable', scope: 'player', min: 0, max: null, increments: [] }])} className="bg-[#3498db] text-white px-4 py-2 rounded text-xs font-bold uppercase tracking-wider hover:bg-[#2980b9] transition-colors shadow-lg">
+                  + Add Variable
+               </button>
+            </div>
+
+            {variables.length === 0 && (
+               <div className="text-center py-12 text-[#666] font-mono text-sm border border-dashed border-[#444] rounded">
+                  No variables defined yet. Creating variables will let you track counts when events happen in-game.
+               </div>
+            )}
+
+            {variables.map((v, i) => (
+               <div key={v.id} className="bg-[#212121] border border-[#333] rounded overflow-hidden">
+                  <div className="bg-[#2a2a2a] p-3 border-b flex items-center justify-between border-[#333]">
+                     <div className="flex items-center gap-4">
+                        <select
+                           value={v.scope}
+                           onChange={(e) => {
+                              const newVars = [...variables];
+                              newVars[i].scope = e.target.value as 'player' | 'global';
+                              setVariables(newVars);
+                           }}
+                           className="bg-[#111] border border-[#444] text-xs text-white rounded outline-none p-1.5 focus:border-[#007acc]"
+                        >
+                           <option value="player">Player Variable</option>
+                           <option value="global">Global Variable</option>
+                        </select>
+                        <input
+                           type="text"
+                           value={v.name}
+                           onChange={(e) => {
+                              const newVars = [...variables];
+                              newVars[i].name = e.target.value;
+                              setVariables(newVars);
+                           }}
+                           className="bg-transparent border-none text-white font-mono font-bold outline-none flex-1 max-w-[200px]"
+                        />
+                     </div>
+                     <button onClick={() => setVariables(variables.filter(x => x.id !== v.id))} className="text-red-400 hover:text-red-300 text-xs font-bold uppercase">Delete</button>
+                  </div>
+                  <div className="p-4 flex flex-col gap-4">
+                     {/* Min Max constraints */}
+                     <div className="flex gap-4">
+                        <div className="flex flex-col gap-1">
+                           <label className="text-[10px] font-bold text-[#888] uppercase">Minimum Value</label>
+                           <input type="number" value={v.min ?? ''} className="bg-[#111] border border-[#333] p-1.5 rounded text-white font-mono text-sm w-24" onChange={(e) => {
+                              const newVars = [...variables];
+                              newVars[i].min = e.target.value ? parseInt(e.target.value) : null;
+                              setVariables(newVars);
+                           }} />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                           <label className="text-[10px] font-bold text-[#888] uppercase">Maximum Value (Optional)</label>
+                           <input type="number" value={v.max ?? ''} className="bg-[#111] border border-[#333] p-1.5 rounded text-white font-mono text-sm w-24" onChange={(e) => {
+                              const newVars = [...variables];
+                              newVars[i].max = e.target.value ? parseInt(e.target.value) : null;
+                              setVariables(newVars);
+                           }} />
+                        </div>
+                     </div>
+
+                     {/* Increments */}
+                     <div>
+                        <div className="flex items-center justify-between mb-2">
+                           <label className="text-[10px] font-bold text-[#888] uppercase">Triggers (Increment when...)</label>
+                           <button onClick={() => {
+                               const newVars = [...variables];
+                               newVars[i].increments.push({ event: 'playerJoin', amount: 1 });
+                               setVariables(newVars);
+                           }} className="text-[#3498db] text-xs font-bold uppercase hover:underline">+ Add Event</button>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                           {v.increments.map((inc, incIdx) => (
+                              <div key={incIdx} className="flex gap-2 items-center bg-[#181818] p-2 rounded border border-[#2a2a2a]">
+                                 <select value={inc.event} onChange={e => {
+                                      const newVars = [...variables];
+                                      newVars[i].increments[incIdx].event = e.target.value;
+                                      setVariables(newVars);
+                                 }} className="bg-[#111] border border-[#333] text-xs p-1.5 rounded text-white outline-none focus:border-[#007acc] flex-1">
+                                    {MC_EVENTS.map(evt => <option key={evt} value={evt}>{evt}</option>)}
+                                 </select>
+                                 <span className="text-white text-xs font-mono font-bold">BY</span>
+                                 <input type="number" value={inc.amount} onChange={e => {
+                                      const newVars = [...variables];
+                                      newVars[i].increments[incIdx].amount = parseFloat(e.target.value);
+                                      setVariables(newVars);
+                                 }} className="bg-[#111] border border-[#333] p-1 text-white font-mono text-sm rounded w-16" />
+                                 <button onClick={() => {
+                                      const newVars = [...variables];
+                                      newVars[i].increments.splice(incIdx, 1);
+                                      setVariables(newVars);
+                                 }} className="text-red-400 font-bold ml-2 text-xs">X</button>
+                              </div>
+                           ))}
+                        </div>
+                     </div>
+                  </div>
+               </div>
+            ))}
+         </div>
       ) : (
          /* Export / Code Mode */
          <div className="flex w-full h-full">
@@ -1252,15 +1244,8 @@ STEP 4: ADD YOUR CUSTOM GUI FILE
                   </div>
                </div>
                <div className="flex-1 overflow-y-auto p-2">
-                  <div 
-                     onClick={() => setSelectedFile('README.txt')}
-                     className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === 'README.txt' ? 'bg-[#3498db]/20 text-blue-400' : 'text-[#aaa] hover:bg-[#333]'}`}
-                  >
-                     <FileJson className="w-3.5 h-3.5" />
-                     <span>README.txt</span>
-                  </div>
-                  <div className="mt-4 mb-2 text-[10px] font-bold text-[#888] uppercase tracking-wider px-2">
-                    Behavior Pack (Recommended)
+                  <div className="mt-2 mb-2 text-[10px] font-bold text-[#888] uppercase tracking-wider px-2">
+                    Behavior Pack
                   </div>
                   <div 
                      onClick={() => setSelectedFile('BP/manifest.json')}
@@ -1274,10 +1259,20 @@ STEP 4: ADD YOUR CUSTOM GUI FILE
                      className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === 'BP/scripts/main.js' ? 'bg-[#3498db]/20 text-blue-400' : 'text-[#aaa] hover:bg-[#333]'}`}
                   >
                      <FileJson className="w-3.5 h-3.5 text-yellow-400" />
-                     <span className="text-yellow-400">BP/scripts/main.js (Script API)</span>
+                     <span className="text-yellow-400">BP/scripts/main.js</span>
                   </div>
+                  {openedFrom === 'book' && (
+                  <div 
+                     onClick={() => setSelectedFile('BP/items/custom_gui_book.json')}
+                     className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === 'BP/items/custom_gui_book.json' ? 'bg-[#3498db]/20 text-blue-400' : 'text-[#aaa] hover:bg-[#333]'}`}
+                  >
+                     <FileJson className="w-3.5 h-3.5 text-yellow-400" />
+                     <span className="text-yellow-400">BP/items/custom_gui_book.json</span>
+                  </div>
+                  )}
+
                   <div className="mt-4 mb-2 text-[10px] font-bold text-[#888] uppercase tracking-wider px-2">
-                    Resource Pack (Legacy UI)
+                    Resource Pack
                   </div>
                   <div 
                      onClick={() => setSelectedFile('RP/manifest.json')}
@@ -1286,28 +1281,25 @@ STEP 4: ADD YOUR CUSTOM GUI FILE
                      <FileJson className="w-3.5 h-3.5" />
                      <span>RP/manifest.json</span>
                   </div>
+                  {openedFrom === 'book' && (
+                  <>
                   <div 
-                     onClick={() => setSelectedFile('RP/ui/attribute_levelup.json')}
-                     className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === 'RP/ui/attribute_levelup.json' ? 'bg-[#3498db]/20 text-blue-400' : 'text-[#aaa] hover:bg-[#333]'}`}
+                     onClick={() => setSelectedFile('RP/items/custom_gui_book.json')}
+                     className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === 'RP/items/custom_gui_book.json' ? 'bg-[#3498db]/20 text-blue-400' : 'text-[#aaa] hover:bg-[#333]'}`}
                   >
                      <FileJson className="w-3.5 h-3.5" />
-                     <span>RP/ui/attribute_levelup.json (Custom GUI)</span>
+                     <span>RP/items/custom_gui_book.json</span>
                   </div>
                   <div 
-                     onClick={() => setSelectedFile(toggleLocation === 'book' ? 'RP/ui/custom_book_injection.json' : 'RP/ui/custom_inventory_injection.json')}
-                     className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${(selectedFile === 'RP/ui/custom_inventory_injection.json' || selectedFile === 'RP/ui/custom_book_injection.json') ? 'bg-[#3498db]/20 text-blue-400' : 'text-[#aaa] hover:bg-[#333]'}`}
+                     onClick={() => setSelectedFile('RP/textures/item_texture.json')}
+                     className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === 'RP/textures/item_texture.json' ? 'bg-[#3498db]/20 text-blue-400' : 'text-[#aaa] hover:bg-[#333]'}`}
                   >
                      <FileJson className="w-3.5 h-3.5" />
-                     <span>{toggleLocation === 'book' ? 'RP/ui/custom_book_injection.json (Modifications)' : 'RP/ui/custom_inventory_injection.json (Modifications)'}</span>
+                     <span>RP/textures/item_texture.json</span>
                   </div>
+                  </>
+                  )}
                   <div 
-                     onClick={() => setSelectedFile('RP/ui/_ui_defs.json')}
-                     className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === 'RP/ui/_ui_defs.json' ? 'bg-[#3498db]/20 text-blue-400' : 'text-[#aaa] hover:bg-[#333]'}`}
-                  >
-                     <FileJson className="w-3.5 h-3.5" />
-                     <span>RP/ui/_ui_defs.json</span>
-                  </div>
-                   <div 
                      onClick={() => setSelectedFile('RP/texts/en_US.lang')}
                      className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === 'RP/texts/en_US.lang' ? 'bg-[#3498db]/20 text-blue-400' : 'text-[#aaa] hover:bg-[#333]'}`}
                   >
@@ -1318,20 +1310,58 @@ STEP 4: ADD YOUR CUSTOM GUI FILE
                <div className="p-4 border-t border-[#333]">
                  <button onClick={() => {
                      let text = "";
-                     if (selectedFile === 'README.txt') text = getReadmeText();
-                     if (selectedFile === 'RP/ui/attribute_levelup.json') text = generateBridgeJSON();
-                     if (selectedFile === 'RP/ui/custom_inventory_injection.json' || selectedFile === 'RP/ui/custom_book_injection.json') {
-                         text = toggleLocation === 'book' ? generateBookJSON() : generateToggleJSON();
-                     }
-                     if (selectedFile === 'RP/ui/_ui_defs.json') text = generateUIDefsJSON();
                      if (selectedFile === 'BP/manifest.json') text = generateBPManifest();
                      if (selectedFile === 'RP/manifest.json') text = generateRPManifest();
                      if (selectedFile === 'BP/scripts/main.js') text = generateScriptAPI();
+                     if (selectedFile === 'BP/items/custom_gui_book.json') {
+text = `{
+  "format_version": "1.20.50",
+  "minecraft:item": {
+    "description": {
+      "identifier": "custom:gui_book",
+      "menu_category": {
+        "category": "equipment"
+      }
+    },
+    "components": {
+      "minecraft:icon": "gui_book",
+      "minecraft:display_name": {
+        "value": "GUI Book"
+      },
+      "minecraft:max_stack_size": 1,
+      "minecraft:hand_equipped": true
+    }
+  }
+}`;
+                     }
+                     if (selectedFile === 'RP/items/custom_gui_book.json') {
+text = `{
+  "format_version": "1.20.50",
+  "minecraft:item": {
+    "description": {
+      "identifier": "custom:gui_book"
+    },
+    "components": {
+      "minecraft:icon": "gui_book"
+    }
+  }
+}`;
+                     }
+                     if (selectedFile === 'RP/textures/item_texture.json') {
+text = `{
+  "resource_pack_name": "custom",
+  "texture_name": "atlas.items",
+  "texture_data": {
+    "gui_book": {
+      "textures": "textures/items/book_normal"
+    }
+  }
+}`;
+                     }
                      if (selectedFile === 'RP/texts/en_US.lang') {
                         const allElements = [...guiElements, ...bookElements];
                         const labels = allElements.filter(e=>e.type==='label').map(e => `label.${e.name.replace(/ /g, '_').toLowerCase()} = ${e.props.text}`).join('\n');
-                        const toggleStr = `label.open_custom_gui = ${toggleName}`;
-                        text = `## Text bindings for attribute_levelup.json\n\n${toggleStr}\n${labels}`;
+                        text = `item.custom:gui_book.name=GUI Book\n\n${labels}`;
                      }
                      navigator.clipboard.writeText(text);
                      alert(`Copied ${selectedFile} to clipboard!`);
@@ -1370,16 +1400,50 @@ STEP 4: ADD YOUR CUSTOM GUI FILE
 
                <div className="flex-1 p-4 overflow-auto custom-scrollbar">
                   <pre className="text-[12px] font-mono text-[#dcdcaa] leading-relaxed">
-                     {selectedFile === 'README.txt' && getReadmeText()}
-                     {selectedFile === 'RP/ui/_ui_defs.json' && generateUIDefsJSON()}
                      {selectedFile === 'BP/manifest.json' && generateBPManifest()}
                      {selectedFile === 'RP/manifest.json' && generateRPManifest()}
                      {selectedFile === 'BP/scripts/main.js' && generateScriptAPI()}
-                     {selectedFile === 'RP/ui/attribute_levelup.json' && generateBridgeJSON()}
-                     {(selectedFile === 'RP/ui/custom_inventory_injection.json' || selectedFile === 'RP/ui/custom_book_injection.json') && (toggleLocation === 'book' ? generateBookJSON() : generateToggleJSON())}
+                     {selectedFile === 'BP/items/custom_gui_book.json' && JSON.stringify({
+  "format_version": "1.20.50",
+  "minecraft:item": {
+    "description": {
+      "identifier": "custom:gui_book",
+      "menu_category": {
+        "category": "equipment"
+      }
+    },
+    "components": {
+      "minecraft:icon": "gui_book",
+      "minecraft:display_name": {
+        "value": "GUI Book"
+      },
+      "minecraft:max_stack_size": 1,
+      "minecraft:hand_equipped": true
+    }
+  }
+}, null, 2)}
+                     {selectedFile === 'RP/items/custom_gui_book.json' && JSON.stringify({
+  "format_version": "1.20.50",
+  "minecraft:item": {
+    "description": {
+      "identifier": "custom:gui_book"
+    },
+    "components": {
+      "minecraft:icon": "gui_book"
+    }
+  }
+}, null, 2)}
+                     {selectedFile === 'RP/textures/item_texture.json' && JSON.stringify({
+  "resource_pack_name": "custom",
+  "texture_name": "atlas.items",
+  "texture_data": {
+    "gui_book": {
+      "textures": "textures/items/book_normal"
+    }
+  }
+}, null, 2)}
                      {selectedFile === 'RP/texts/en_US.lang' && (
-                        `## Text bindings for attribute_levelup.json\n\n` + 
-                        `label.open_custom_gui = ${toggleName}\n` +
+                        `item.custom:gui_book.name=GUI Book\n\n` +
                         `${[...guiElements, ...bookElements].filter(e=>e.type==='label').map(e => `label.${e.name.replace(/ /g, '_').toLowerCase()} = ${e.props.text}`).join('\n')}`
                      )}
                   </pre>
