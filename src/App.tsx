@@ -203,15 +203,16 @@ Why didn't your hud_screen button or keybind work?
 3. STANDALONE SCREENS: You cannot just make a new file called "my_screen.json" and expect it to magically open. The game only knows vanilla screens.
 
 THE SOLUTION (INJECTION VIA MODIFICATIONS):
-To make your GUI work purely with JSON using Bridge IDE:
+To make your GUI work purely with JSON using Bridge IDE WITHOUT destroying your vanilla inventory:
 
-STEP 1: USE MODIFICATIONS
-This app generates an 'inventory_screen.json' file that uses the Bedrock 'modifications' feature. This inserts your GUI safely without overwriting the entire massive vanilla file.
+STEP 1: NEVER NAME IT 'inventory_screen.json'
+If you name your file exactly 'inventory_screen.json', Minecraft completely replaces the vanilla file. Since this snippet only contains the modification block, all the other vanilla inventory panels are lost, causing your screen to be completely empty!
 
-STEP 2: ADD IT TO BRIDGE
-1. In Bridge IDE, create a new file located exactly at: 'RP/ui/inventory_screen.json'
-2. Copy the ENTIRE contents of the 'RP/ui/inventory_screen.json (Modifications)' tab and paste it into that new file inside Bridge.
-3. You will now have a custom toggle button in your inventory that reveals your custom GUI!
+STEP 2: ADD IT TO BRIDGE SAFELY
+1. In Bridge IDE, create a **NEW** file in your 'ui' folder with a custom name, for example: 'RP/ui/custom_inventory_injection.json'
+2. Copy the ENTIRE contents of the 'RP/ui/custom_inventory_injection.json' tab and paste it into that new file inside Bridge.
+3. Bridge IDE will automatically detect this new UI file and add it to 'ui_defs.json' behind the scenes.
+4. Because the file has a different name, the game loads the full real inventory first, then safely applies your modification on top!
 
 STEP 3: ADD YOUR CUSTOM GUI FILE
 1. In Bridge, make sure you also created 'RP/ui/attribute_levelup.json'.
@@ -763,11 +764,11 @@ STEP 3: ADD YOUR CUSTOM GUI FILE
                      <span>RP/ui/attribute_levelup.json (Custom GUI)</span>
                   </div>
                   <div 
-                     onClick={() => setSelectedFile('RP/ui/inventory_screen.json')}
-                     className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === 'RP/ui/inventory_screen.json' ? 'bg-[#3498db]/20 text-blue-400' : 'text-[#aaa] hover:bg-[#333]'}`}
+                     onClick={() => setSelectedFile('RP/ui/custom_inventory_injection.json')}
+                     className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === 'RP/ui/custom_inventory_injection.json' ? 'bg-[#3498db]/20 text-blue-400' : 'text-[#aaa] hover:bg-[#333]'}`}
                   >
                      <FileJson className="w-3.5 h-3.5" />
-                     <span>RP/ui/inventory_screen.json (Modifications)</span>
+                     <span>RP/ui/custom_inventory_injection.json (Modifications)</span>
                   </div>
                   <div 
                      onClick={() => setSelectedFile('RP/texts/en_US.lang')}
@@ -782,7 +783,7 @@ STEP 3: ADD YOUR CUSTOM GUI FILE
                      let text = "";
                      if (selectedFile === 'README.txt') text = getReadmeText();
                      if (selectedFile === 'RP/ui/attribute_levelup.json') text = generateBridgeJSON();
-                     if (selectedFile === 'RP/ui/inventory_screen.json') text = generateToggleJSON();
+                     if (selectedFile === 'RP/ui/custom_inventory_injection.json') text = generateToggleJSON();
                      if (selectedFile === 'RP/texts/en_US.lang') {
                         const labels = elements.filter(e=>e.type==='label').map(e => `label.${e.name.replace(/ /g, '_').toLowerCase()} = ${e.props.text}`).join('\n');
                         const toggleStr = `label.open_custom_gui = ${toggleName}`;
@@ -803,7 +804,7 @@ STEP 3: ADD YOUR CUSTOM GUI FILE
                   <pre className="text-[12px] font-mono text-[#dcdcaa] leading-relaxed">
                      {selectedFile === 'README.txt' && getReadmeText()}
                      {selectedFile === 'RP/ui/attribute_levelup.json' && generateBridgeJSON()}
-                     {selectedFile === 'RP/ui/inventory_screen.json' && generateToggleJSON()}
+                     {selectedFile === 'RP/ui/custom_inventory_injection.json' && generateToggleJSON()}
                      {selectedFile === 'RP/texts/en_US.lang' && (
                         `## Text bindings for attribute_levelup.json\n\n` + 
                         `label.open_custom_gui = ${toggleName}\n` +
