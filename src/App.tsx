@@ -123,7 +123,7 @@ export default function App() {
       return `
       {
         "${el.name.replace(/ /g, '_').toLowerCase()}": {
-          "type": "${el.type === 'image' ? 'custom_image' : el.type}",
+          "type": "${el.type}",
           "size": [${el.width}, ${el.height}],
           "offset": [${el.x}, ${el.y}],
           "anchor_from": "top_left",
@@ -668,7 +668,7 @@ export default function App() {
                         </div>
                         <div className="bg-[#111] border border-[#333] p-2.5 rounded h-32 font-mono text-[10px] text-[#aaa] overflow-auto whitespace-pre leading-relaxed shadow-inner custom-scrollbar relative w-full">
                            <span className="text-blue-400">"{selectedElement.name.replace(/ /g, '_').toLowerCase()}"</span>: {"{\n"}
-                           &nbsp;&nbsp;<span className="text-purple-400">"type"</span>: <span className="text-green-400">"{selectedElement.type === 'image' ? 'custom_image' : selectedElement.type}"</span>,\n
+                           &nbsp;&nbsp;<span className="text-purple-400">"type"</span>: <span className="text-green-400">"{selectedElement.type}"</span>,\n
                            &nbsp;&nbsp;<span className="text-purple-400">"size"</span>: <span className="text-[#dcdcaa]">[{selectedElement.width}, {selectedElement.height}]</span>,\n
                            &nbsp;&nbsp;<span className="text-purple-400">"offset"</span>: <span className="text-[#dcdcaa]">[{selectedElement.x}, {selectedElement.y}]</span>,\n
                            {selectedElement.type === 'label' && (
