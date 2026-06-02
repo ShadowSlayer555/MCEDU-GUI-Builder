@@ -60,6 +60,7 @@ const MC_EVENTS = [
 interface VariableIncrement {
   event: string;
   amount: number;
+  aiGeneratedCode?: string;
 }
 
 interface Variable {
@@ -103,6 +104,8 @@ export default function App() {
   
   const [aiPrompt, setAiPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [aiVarPrompt, setAiVarPrompt] = useState("");
+  const [isGeneratingVar, setIsGeneratingVar] = useState(false);
   
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('GEMINI_API_KEY') || '');
   const [showSettings, setShowSettings] = useState(false);
@@ -122,6 +125,50 @@ export default function App() {
   const saveApiKey = (key: string) => {
     setApiKey(key);
     localStorage.setItem('GEMINI_API_KEY', key);
+  };
+
+  const handleGenerateVariable = async () => {
+    if (!aiVarPrompt) return;
+    if (!apiKey) {
+      alert("Please configure your Gemini API Key in Settings first.");
+      setShowSettings(true);
+      return;
+    }
+    setIsGeneratingVar(true);
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+           system_instruction: { parts: [{ text: "You are an expert at Minecraft Bedrock script API development." }] },
+           contents: [{ role: "user", parts: [{ text: `You are assisting a developer working on a custom Bedrock add-on. They provided this request for a new stat or variable to track using the Script API: "${aiVarPrompt}". Generate a JSON object with this exact structure: { "name": "VariableName", "scope": "player" | "global", "increments": [ { "event": "complex_script", "amount": 1, "customCode": "// Define custom AI logic for this variable here!\\n// world.afterEvents.entityDie.subscribe((event) => { /* logic involving player */ });" } ] } Return ONLY valid JSON. Omit all markdown formatting. The variable name must be alphanumeric and under 16 characters.` }] }]
+        })
+      });
+      const data = await response.json();
+      if (data.candidates && data.candidates[0].content.parts[0].text) {
+         let text = data.candidates[0].content.parts[0].text;
+         text = text.replace(/```json/gi, "").replace(/```/g, "").trim();
+         const newVar = JSON.parse(text);
+         setVariables(prev => [...prev, {
+            id: generateUUID(),
+            name: newVar.name || "AIVar",
+            scope: newVar.scope === 'global' ? 'global' : 'player',
+            min: null, max: null,
+            increments: newVar.increments?.map((inc: any) => ({
+                event: inc.event || 'complex_script',
+                amount: inc.amount || 1,
+                aiGeneratedCode: inc.customCode
+            })) || []
+         }]);
+         setAiVarPrompt("");
+      } else {
+         throw new Error("Invalid response format");
+      }
+    } catch (e: any) {
+      alert("Failed to generate variable: " + e.message);
+    } finally {
+      setIsGeneratingVar(false);
+    }
   };
 
   const handleGenerateLogic = async () => {
@@ -363,8 +410,7 @@ export default function App() {
   }
 }, 20); // Runs once every second (20 ticks)`;
           } else if (inc.event === 'complex_script') {
-             return `// TODO: Define custom AI logic for "${v.name}" here!
-// world.afterEvents.entityHurt.subscribe((event) => { /* logic */ });`;
+             return inc.aiGeneratedCode || `// TODO: Define custom AI logic for "${v.name}" here!\n// world.afterEvents.entityHurt.subscribe((event) => { /* logic */ });`;
           } else {
              return `world.afterEvents.${inc.event}.subscribe((event) => {
   let p = event.player || event.sourceEntity || event.source;
@@ -402,33 +448,24 @@ import { ${formType} } from "@minecraft/server-ui";
  * Dependencies in manifest.json: "@minecraft/server" , "@minecraft/server-ui"
  */
 
-// --- Dynamic Variables Helper Functions (Scoreboards) ---
-function initObjective(varName) {
-    let obj = world.scoreboard.getObjective(varName);
-    if (!obj) {
-        obj = world.scoreboard.addObjective(varName, varName);
-    }
-    return obj;
-}
-
+// --- Dynamic Variables Helper Functions (Properties) ---
 function getVar(scope, varName, player) {
-    let obj = initObjective(varName);
     try {
-        if (scope === 'player') return obj.getScore(player) ?? 0;
-        return obj.getScore(varName + "_global") ?? 0;
+        let source = scope === 'player' ? player : world;
+        return source.getDynamicProperty(varName) ?? 0;
     } catch {
         return 0;
     }
 }
 
 function setVar(scope, varName, player, val, min, max) {
-    let obj = initObjective(varName);
-    if (min !== null && val < min) val = min;
-    if (max !== null && val > max) val = max;
-    if (scope === 'player') {
-        obj.setScore(player, val);
-    } else {
-        obj.setScore(varName + "_global", val);
+    try {
+        let source = scope === 'player' ? player : world;
+        if (min !== null && val < min) val = min;
+        if (max !== null && val > max) val = max;
+        source.setDynamicProperty(varName, val);
+    } catch (e) {
+        console.error("Failed to set property " + varName + ": " + e);
     }
 }
 
@@ -1226,11 +1263,30 @@ function showCustomUI(player) {
             <div className="flex justify-between items-center bg-[#222] p-4 rounded border border-[#333]">
                <div>
                   <h3 className="text-lg font-bold text-white uppercase tracking-wider">Dynamic Variables</h3>
-                  <p className="text-xs text-[#888]">Track global and player-specific stats using Bedrock Dynamic Properties/Scoreboards.</p>
+                  <p className="text-xs text-[#888]">Track global and player-specific stats using Bedrock Dynamic Properties.</p>
                </div>
                <button onClick={() => setVariables([...variables, { id: generateUUID(), name: 'newVariable', scope: 'player', min: 0, max: null, increments: [] }])} className="bg-[#3498db] text-white px-4 py-2 rounded text-xs font-bold uppercase tracking-wider hover:bg-[#2980b9] transition-colors shadow-lg">
                   + Add Variable
                </button>
+            </div>
+
+            <div className="bg-[#111] border border-[#333] rounded p-4 flex flex-col gap-2">
+               <h4 className="text-xs font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-purple-400" /> AI Variable Settings
+               </h4>
+               <p className="text-[10px] text-[#888]">Describe a stat or variable to track (e.g., "tracks blocks broken", "tracks x axis position", "mana").</p>
+               <div className="flex gap-2">
+                  <input 
+                     type="text" 
+                     value={aiVarPrompt} 
+                     onChange={e => setAiVarPrompt(e.target.value)} 
+                     placeholder="E.g., Track how many times player jumps..."
+                     className="bg-[#222] border border-[#444] rounded px-3 py-1.5 text-xs text-white outline-none flex-1 focus:border-purple-500"
+                  />
+                  <button onClick={handleGenerateVariable} disabled={isGeneratingVar} className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white px-4 py-1.5 rounded text-[11px] font-bold tracking-wider uppercase disabled:opacity-50 flex items-center gap-2">
+                     {isGeneratingVar ? <span className="animate-spin relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-white"></span></span> : "Generate"}
+                  </button>
+               </div>
             </div>
 
             {variables.length === 0 && (
