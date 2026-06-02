@@ -37,7 +37,7 @@ interface EditorElement {
   height: number;
   name: string;
   props: Record<string, string>;
-  variableActions?: { varId: string; amount: number }[];
+  variableActions?: { varId: string; amount: number; required?: boolean }[];
 }
 
 type ViewMode = 'designer' | 'variables' | 'export';
@@ -54,7 +54,7 @@ const MC_EVENTS = [
   'blockBreak', 'blockPlace', 'buttonPush', 'chatSend', 'entityDie', 'entityHurt', 
   'entityHitEntity', 'entityHitBlock', 'itemCompleteUse', 'itemReleaseUse', 
   'itemStartUse', 'itemUse', 'itemUseOn', 'playerBreakBlock', 'playerPlaceBlock', 
-  'playerJoin', 'playerLeave', 'playerSpawn', 'weatherChange'
+  'playerJoin', 'playerLeave', 'playerSpawn', 'weatherChange', 'tick', 'complex_script'
 ];
 
 interface VariableIncrement {
@@ -250,26 +250,50 @@ export default function App() {
     const inputs = guiElements.filter(e => ['dropdown', 'slider', 'textfield', 'toggle'].includes(e.type));
     
     const title = labels[0]?.props.text || "Custom UI";
-    const body = labels.slice(1).map(l => l.props.text).join("\\n");
 
     let formType = isModal ? 'ModalFormData' : 'ActionFormData';
     let formBuilder = `const form = new ${formType}();\n  form.title("${title}");`;
     
-    if (!isModal && (body || labels.length > 0)) {
-       formBuilder += `\n  if ("${body}") {\n    form.body("${body}");\n  }`;
+    // Dynamic body builder for bound variables
+    const bodyLines = labels.slice(1).map(l => {
+       if (l.props.boundVariable) {
+          let v = variables.find(v => v.id === l.props.boundVariable);
+          if (v) {
+             return `"${l.props.text} " + getVar("${v.scope}", "${v.name}", player)`;
+          }
+       }
+       return `"${l.props.text}"`;
+    });
+    
+    if (!isModal && bodyLines.length > 0) {
+       formBuilder += `\n  form.body(${bodyLines.join(' + "\\n" + ')});`;
     }
 
     let logicCode = "";
 
-    const generateVarActionCode = (btnActions?: {varId: string; amount: number}[]) => {
+    const generateVarActionCode = (btnActions?: {varId: string; amount: number; required?: boolean}[]) => {
         if (!btnActions || btnActions.length === 0) return '';
-        return btnActions.map(action => {
+        let code = '';
+        const requiredActions = btnActions.filter(a => a.required);
+        if (requiredActions.length > 0) {
+            code += `let canExecute = true;\n      `;
+            requiredActions.forEach((action, i) => {
+                let v = variables.find(v => v.id === action.varId);
+                if (v) {
+                    code += `let val${i} = getVar("${v.scope}", "${v.name}", player);\n      if (${v.min !== null} && (val${i} + (${action.amount})) < ${v.min}) { canExecute = false; player.sendMessage("§cNot enough ${v.name}!"); }\n      `;
+                }
+            });
+            code += `if (!canExecute) return;\n      `;
+        }
+
+        code += btnActions.map(action => {
             let v = variables.find(v => v.id === action.varId);
             if (!v) return '';
-            return `let val = getVar("${v.scope}", "${v.name}", player);
-      setVar("${v.scope}", "${v.name}", player, val + (${action.amount}), ${v.min !== null ? v.min : 'null'}, ${v.max !== null ? v.max : 'null'});
+            return `let val_${v.name} = getVar("${v.scope}", "${v.name}", player);
+      setVar("${v.scope}", "${v.name}", player, val_${v.name} + (${action.amount}), ${v.min !== null ? v.min : 'null'}, ${v.max !== null ? v.max : 'null'});
       player.sendMessage("§a${v.name} is now: " + getVar("${v.scope}", "${v.name}", player));`;
         }).join('\n      ');
+        return code;
     };
 
     if (isModal) {
@@ -330,13 +354,25 @@ export default function App() {
 
     const triggerEventCode = variables.map(v => {
        return v.increments.map(inc => {
-          return `world.afterEvents.${inc.event}.subscribe((event) => {
+          if (inc.event === 'tick') {
+             return `system.runInterval(() => {
+  for (const p of world.getAllPlayers()) {
+    let val = getVar("${v.scope}", "${v.name}", p);
+    setVar("${v.scope}", "${v.name}", p, val + (${inc.amount}), ${v.min !== null ? v.min : 'null'}, ${v.max !== null ? v.max : 'null'});
+  }
+}, 20); // Runs once every second (20 ticks)`;
+          } else if (inc.event === 'complex_script') {
+             return `// TODO: Define custom AI logic for "${v.name}" here!
+// world.afterEvents.entityHurt.subscribe((event) => { /* logic */ });`;
+          } else {
+             return `world.afterEvents.${inc.event}.subscribe((event) => {
   let p = event.player || event.sourceEntity || event.source;
   if (${v.scope === 'player' ? `p && p.typeId === 'minecraft:player'` : `true`}) {
     let val = getVar("${v.scope}", "${v.name}", p);
     setVar("${v.scope}", "${v.name}", p, val + (${inc.amount}), ${v.min !== null ? v.min : 'null'}, ${v.max !== null ? v.max : 'null'});
   }
 });`;
+          }
        }).join('\n\n');
     }).filter(Boolean).join('\n\n');
 
@@ -345,12 +381,12 @@ export default function App() {
 world.afterEvents.playerSpawn.subscribe((event) => {
   if (event.initialSpawn) {
      const player = event.player;
-     system.run(() => {
+     system.runTimeout(() => {
         if (!player.hasTag("has_gui_book")) {
-            player.runCommand("give @s custom:gui_book 1");
+            player.runCommandAsync("give @s custom:gui_book 1").catch(e=>{});
             player.addTag("has_gui_book");
         }
-     });
+     }, 20);
   }
 });
 ` : '';
@@ -365,17 +401,34 @@ import { ${formType} } from "@minecraft/server-ui";
  * Dependencies in manifest.json: "@minecraft/server" , "@minecraft/server-ui"
  */
 
-// --- Dynamic Variables Helper Functions ---
+// --- Dynamic Variables Helper Functions (Scoreboards) ---
+function initObjective(varName) {
+    let obj = world.scoreboard.getObjective(varName);
+    if (!obj) {
+        obj = world.scoreboard.addObjective(varName, varName);
+    }
+    return obj;
+}
+
 function getVar(scope, varName, player) {
-   let source = scope === 'player' ? player : world;
-   return source.getDynamicProperty(varName) ?? 0;
+    let obj = initObjective(varName);
+    try {
+        if (scope === 'player') return obj.getScore(player) ?? 0;
+        return obj.getScore(varName + "_global") ?? 0;
+    } catch {
+        return 0;
+    }
 }
 
 function setVar(scope, varName, player, val, min, max) {
-   let source = scope === 'player' ? player : world;
-   if (min !== null && val < min) val = min;
-   if (max !== null && val > max) val = max;
-   source.setDynamicProperty(varName, val);
+    let obj = initObjective(varName);
+    if (min !== null && val < min) val = min;
+    if (max !== null && val > max) val = max;
+    if (scope === 'player') {
+        obj.setScore(player, val);
+    } else {
+        obj.setScore(varName + "_global", val);
+    }
 }
 
 // --- Variable Event Triggers ---
@@ -948,36 +1001,60 @@ function showCustomUI(player) {
                         </div>
                      )}
 
+                     {selectedElement.type === 'label' && variables.length > 0 && (
+                        <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-[#333]">
+                           <span className="text-[10px] font-bold text-[#666] uppercase">Bind to Variable (optional)</span>
+                           <select 
+                              value={selectedElement.props.boundVariable || ''} 
+                              onChange={(e) => updateSelectedProp('boundVariable', e.target.value)}
+                              className="bg-[#111] border border-[#333] text-xs text-white rounded p-1.5 focus:border-[#3498db] outline-none"
+                           >
+                              <option value="">None</option>
+                              {variables.map(v => <option key={v.id} value={v.id}>{v.name} ({v.scope})</option>)}
+                           </select>
+                        </div>
+                     )}
+
                      {selectedElement.type === 'button' && variables.length > 0 && (
                         <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-[#333]">
                            <div className="flex items-center justify-between">
                              <span className="text-[10px] font-bold text-[#666] uppercase">Variable Modifiers</span>
                              <button onClick={() => {
                                  const acts = selectedElement.variableActions || [];
-                                 setElements(prev => prev.map(el => el.id === selectedId ? { ...el, variableActions: [...acts, { varId: variables[0].id, amount: 1 }] } : el));
+                                 setElements(prev => prev.map(el => el.id === selectedId ? { ...el, variableActions: [...acts, { varId: variables[0].id, amount: 1, required: false }] } : el));
                              }} className="text-[#3498db] text-[10px] font-bold uppercase hover:underline">+ Add Action</button>
                            </div>
                            <div className="flex flex-col gap-2">
                               {selectedElement.variableActions?.map((act, idx) => (
-                                 <div key={idx} className="flex gap-1 items-center bg-[#111] p-1.5 rounded border border-[#333]">
-                                    <select value={act.varId} onChange={(e) => {
-                                       const acts = [...(selectedElement.variableActions||[])];
-                                       acts[idx].varId = e.target.value;
-                                       setElements(prev => prev.map(el => el.id === selectedId ? { ...el, variableActions: acts } : el));
-                                    }} className="bg-[#111] border border-[#444] text-[10px] text-white rounded p-1 flex-1">
-                                       {variables.map(v => <option key={v.id} value={v.id}>{v.name} ({v.scope})</option>)}
-                                    </select>
-                                    <span className="text-[#888] text-[10px] font-bold">+</span>
-                                    <input type="number" value={act.amount} onChange={(e) => {
-                                       const acts = [...(selectedElement.variableActions||[])];
-                                       acts[idx].amount = parseFloat(e.target.value);
-                                       setElements(prev => prev.map(el => el.id === selectedId ? { ...el, variableActions: acts } : el));
-                                    }} className="bg-[#111] border border-[#444] text-[10px] text-white rounded p-1 w-12 text-center" />
-                                    <button onClick={() => {
-                                       const acts = [...(selectedElement.variableActions||[])];
-                                       acts.splice(idx, 1);
-                                       setElements(prev => prev.map(el => el.id === selectedId ? { ...el, variableActions: acts } : el));
-                                    }} className="text-red-400 text-[10px] font-bold px-1 hover:text-red-300">X</button>
+                                 <div key={idx} className="flex flex-col gap-1 bg-[#111] p-1.5 rounded border border-[#333]">
+                                    <div className="flex gap-1 items-center">
+                                       <select value={act.varId} onChange={(e) => {
+                                          const acts = [...(selectedElement.variableActions||[])];
+                                          acts[idx].varId = e.target.value;
+                                          setElements(prev => prev.map(el => el.id === selectedId ? { ...el, variableActions: acts } : el));
+                                       }} className="bg-[#222] border border-[#444] text-[10px] text-white rounded p-1 flex-1">
+                                          {variables.map(v => <option key={v.id} value={v.id}>{v.name} ({v.scope})</option>)}
+                                       </select>
+                                       <span className="text-[#888] text-[10px] font-bold">+</span>
+                                       <input type="number" value={act.amount} onChange={(e) => {
+                                          const acts = [...(selectedElement.variableActions||[])];
+                                          acts[idx].amount = parseFloat(e.target.value);
+                                          setElements(prev => prev.map(el => el.id === selectedId ? { ...el, variableActions: acts } : el));
+                                       }} className="bg-[#222] border border-[#444] text-[10px] text-white rounded p-1 w-12 text-center" />
+                                       <button onClick={() => {
+                                          const acts = [...(selectedElement.variableActions||[])];
+                                          acts.splice(idx, 1);
+                                          setElements(prev => prev.map(el => el.id === selectedId ? { ...el, variableActions: acts } : el));
+                                       }} className="text-red-400 text-[10px] font-bold px-1 hover:text-red-300">X</button>
+                                    </div>
+                                    <label className="flex items-center gap-1.5 cursor-pointer mt-1">
+                                       <input type="checkbox" checked={!!act.required} onChange={(e) => {
+                                          const acts = [...(selectedElement.variableActions||[])];
+                                          acts[idx].required = e.target.checked;
+                                          setElements(prev => prev.map(el => el.id === selectedId ? { ...el, variableActions: acts } : el));
+                                       }} className="accent-[#3498db]" />
+                                       <span className="text-[9px] text-[#aaa]">Required (Fail if exceeded condition)</span>
+                                    </label>
                                  </div>
                               ))}
                            </div>
@@ -1329,7 +1406,11 @@ text = `{
         "value": "GUI Book"
       },
       "minecraft:max_stack_size": 1,
-      "minecraft:hand_equipped": true
+      "minecraft:hand_equipped": true,
+      "minecraft:cooldown": {
+        "category": "gui_book",
+        "duration": 0.5
+      }
     }
   }
 }`;
@@ -1418,7 +1499,11 @@ text = `{
         "value": "GUI Book"
       },
       "minecraft:max_stack_size": 1,
-      "minecraft:hand_equipped": true
+      "minecraft:hand_equipped": true,
+      "minecraft:cooldown": {
+        "category": "gui_book",
+        "duration": 0.5
+      }
     }
   }
 }, null, 2)}
