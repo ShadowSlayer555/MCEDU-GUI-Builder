@@ -23,7 +23,8 @@ import {
   List,
   SlidersHorizontal,
   TextCursorInput,
-  CheckSquare
+  CheckSquare,
+  Sparkles
 } from 'lucide-react';
 
 type ElementType = 'panel' | 'button' | 'label' | 'image' | 'dropdown' | 'slider' | 'textfield' | 'toggle';
@@ -82,6 +83,8 @@ export default function App() {
   const [appPhase, setAppPhase] = useState<AppPhase>('setup');
   const [openedFrom, setOpenedFrom] = useState<'book' | 'modded_item'>('book');
   const [moddedItemName, setModdedItemName] = useState('my_mod:magic_wand');
+  const [baseBPManifest, setBaseBPManifest] = useState("");
+  const [baseRPManifest, setBaseRPManifest] = useState("");
 
   
   const [guiElements, setGuiElements] = useState<EditorElement[]>([]);
@@ -212,82 +215,122 @@ export default function App() {
   };
 
   const generateBPManifest = () => {
-    return `{
-	"format_version": 2,
-	"metadata": {
-		"authors": [
-			"Umbra_Atelier"
-		],
-		"generated_with": {
-			"bridge": [
-				"2.7.54"
-			]
-		}
-	},
-	"header": {
-		"name": "EDU-GUI-MOD BP",
-		"description": "Script API UI Behavior Pack",
-		"min_engine_version": [
-			1,
-			21,
-			120
-		],
-		"uuid": "${bpUuid1}",
-		"version": [
-			1,
-			0,
-			9
-		]
-	},
-	"modules": [
-		{
-			"type": "data",
-			"uuid": "${bpUuid2}",
-			"version": [
-				1,
-				0,
-				0
-			]
-		},
-		{
-			"type": "script",
-			"language": "javascript",
-			"uuid": "${bpUuid3}",
-			"version": [1, 0, 0],
-			"entry": "scripts/main.js"
-		}
-	],
-	"dependencies": [
-		{
-			"module_name": "@minecraft/server",
-			"version": "1.14.0"
-		},
-		{
-			"module_name": "@minecraft/server-ui",
-			"version": "1.3.0"
-		}
-	]
-}`;
+    let base = null;
+    try {
+        if (baseBPManifest.trim() !== '') {
+            base = JSON.parse(baseBPManifest);
+        }
+    } catch(e) {}
+    
+    if (base) {
+        if (!base.modules) base.modules = [];
+        if (!base.dependencies) base.dependencies = [];
+        
+        // Add script module if missing
+        if (!base.modules.some((m: any) => m.type === "script")) {
+            base.modules.push({
+                "type": "script",
+                "language": "javascript",
+                "uuid": bpUuid3,
+                "version": [1, 0, 0],
+                "entry": "scripts/main.js"
+            });
+        }
+        
+        // Add required dependencies if missing
+        if (!base.dependencies.some((d: any) => d.module_name === "@minecraft/server")) {
+            base.dependencies.push({ "module_name": "@minecraft/server", "version": "1.14.0" });
+        }
+        if (!base.dependencies.some((d: any) => d.module_name === "@minecraft/server-ui")) {
+            base.dependencies.push({ "module_name": "@minecraft/server-ui", "version": "1.3.0" });
+        }
+        
+        return JSON.stringify(base, null, 4);
+    }
+    
+    return JSON.stringify({
+      "format_version": 2,
+      "metadata": {
+        "authors": ["Umbra_Atelier"],
+        "generated_with": { "bridge": ["2.7.54"] }
+      },
+      "header": {
+        "name": "EDU-GUI-MOD BP",
+        "description": "Script API UI Behavior Pack",
+        "min_engine_version": [1, 21, 120],
+        "uuid": bpUuid1,
+        "version": [1, 0, 0]
+      },
+      "modules": [
+        {
+          "type": "data",
+          "uuid": bpUuid2,
+          "version": [1, 0, 0]
+        },
+        {
+          "type": "script",
+          "language": "javascript",
+          "uuid": bpUuid3,
+          "version": [1, 0, 0],
+          "entry": "scripts/main.js"
+        }
+      ],
+      "dependencies": [
+        {
+          "uuid": rpUuid1,
+          "version": [1, 0, 0]
+        },
+        {
+          "module_name": "@minecraft/server",
+          "version": "1.14.0"
+        },
+        {
+          "module_name": "@minecraft/server-ui",
+          "version": "1.3.0"
+        }
+      ]
+    }, null, 4);
   };
 
   const generateRPManifest = () => {
-    return `{
-	"format_version": 2,
-	"header": {
-		"name": "EDU-GUI-MOD RP",
-		"description": "Custom UI Resource Pack",
-		"min_engine_version": [1, 21, 120],
-		"uuid": "${rpUuid1}",
-		"version": [1, 0, 9]
-	},
-	"modules": [
-		{
-			"type": "resources",
-			"uuid": "${rpUuid2}",
-			"version": [1, 0, 0]
-		}
-	]
-}`;
+    let base = null;
+    try {
+        if (baseRPManifest.trim() !== '') {
+            base = JSON.parse(baseRPManifest);
+        }
+    } catch(e) {}
+    
+    if (base) {
+        return JSON.stringify(base, null, 4);
+    }
+
+    return JSON.stringify({
+      "format_version": 2,
+      "metadata": {
+        "authors": ["Umbra_Atelier"],
+        "generated_with": { "bridge": ["2.7.54"] }
+      },
+      "header": {
+        "name": "EDU-GUI-MOD RP",
+        "description": "Custom UI Resource Pack",
+        "min_engine_version": [1, 21, 120],
+        "uuid": rpUuid1,
+        "version": [1, 0, 0]
+      },
+      "modules": [
+        {
+          "type": "resources",
+          "uuid": rpUuid2,
+          "version": [1, 0, 0]
+        }
+      ],
+      "dependencies": [
+        {
+          "uuid": bpUuid1,
+          "version": [1, 0, 0]
+        }
+      ]
+    }, null, 4);
   };
 
   const generateScriptAPI = () => {
@@ -401,7 +444,7 @@ export default function App() {
     }
 
     const triggerEventCode = variables.map(v => {
-       return v.increments.map(inc => {
+       return (v.increments || []).map(inc => {
           if (inc.event === 'tick') {
              return `system.runInterval(() => {
   for (const p of world.getAllPlayers()) {
@@ -453,7 +496,7 @@ function getVar(scope, varName, player) {
     try {
         let source = scope === 'player' ? player : world;
         return source.getDynamicProperty(varName) ?? 0;
-    } catch {
+    } catch (e) {
         return 0;
     }
 }
@@ -670,6 +713,9 @@ function showCustomUI(player) {
                              placeholder="my_namespace:item_id"
                              className="bg-[#111] border border-[#333] px-3 py-2 rounded text-white text-sm outline-none focus:border-blue-500 font-mono"
                           />
+                          <p className="text-[10px] text-yellow-500/80 mt-1 leading-relaxed">
+                            <strong>Note for Vanilla Items:</strong> Normal items like <code>minecraft:stick</code> do not trigger right-click events in the air! You must use a vanilla item that naturally has a right-click action (like <code>minecraft:compass</code>) or stick to custom items.
+                          </p>
                        </div>
                     )}
                  </div>
@@ -1351,12 +1397,13 @@ function showCustomUI(player) {
                            <label className="text-[10px] font-bold text-[#888] uppercase">Triggers (Increment when...)</label>
                            <button onClick={() => {
                                const newVars = [...variables];
+                               newVars[i].increments = newVars[i].increments || [];
                                newVars[i].increments.push({ event: 'playerJoin', amount: 1 });
                                setVariables(newVars);
                            }} className="text-[#3498db] text-xs font-bold uppercase hover:underline">+ Add Event</button>
                         </div>
                         <div className="flex flex-col gap-2">
-                           {v.increments.map((inc, incIdx) => (
+                           {(v.increments || []).map((inc, incIdx) => (
                               <div key={incIdx} className="flex gap-2 items-center bg-[#181818] p-2 rounded border border-[#2a2a2a]">
                                  <select value={inc.event} onChange={e => {
                                       const newVars = [...variables];
@@ -1543,6 +1590,19 @@ text = `{
                     </div>
                   )}
                </div>
+
+               {selectedFile === 'BP/manifest.json' && (
+                   <div className="p-4 bg-[#252525] border-b border-[#333]">
+                      <label className="text-xs text-[#888] block mb-2 font-bold uppercase">Base BP Manifest (Paste your un-modded manifest here to inject scripts/dependencies)</label>
+                      <textarea className="w-full h-32 bg-[#111] border border-[#444] p-2 text-[#dcdcaa] font-mono text-[11px] outline-none rounded focus:border-[#3498db]" value={baseBPManifest} onChange={(e) => setBaseBPManifest(e.target.value)} placeholder="Paste your original behaviour pack manifest.json here..."></textarea>
+                   </div>
+               )}
+               {selectedFile === 'RP/manifest.json' && (
+                   <div className="p-4 bg-[#252525] border-b border-[#333]">
+                      <label className="text-xs text-[#888] block mb-2 font-bold uppercase">Base RP Manifest (Paste your un-modded manifest here)</label>
+                      <textarea className="w-full h-32 bg-[#111] border border-[#444] p-2 text-[#dcdcaa] font-mono text-[11px] outline-none rounded focus:border-[#3498db]" value={baseRPManifest} onChange={(e) => setBaseRPManifest(e.target.value)} placeholder="Paste your original resource pack manifest.json here..."></textarea>
+                   </div>
+               )}
                
                <div className="bg-[#3a2a1a] border-b border-[#dd9b3b] text-[#ffd9a3] p-3 text-xs leading-relaxed">
                   <div className="font-bold flex items-center gap-1.5 mb-1"><span role="img" aria-label="warning">⚠️</span> JSON UI Deprecation Warning (Minecraft 1.21.0+)</div>
