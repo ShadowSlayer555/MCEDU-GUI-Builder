@@ -259,7 +259,8 @@ export default function App() {
        if (l.props.boundVariable) {
           let v = variables.find(v => v.id === l.props.boundVariable);
           if (v) {
-             return `"${l.props.text} " + getVar("${v.scope}", "${v.name}", player)`;
+             const labelPrefix = ['0', 'value', 'var', '0.0', '1'].includes(l.props.text.trim()) ? '' : l.props.text + ' ';
+             return `"${labelPrefix}" + getVar("${v.scope}", "${v.name}", player)`;
           }
        }
        return `"${l.props.text}"`;
@@ -279,8 +280,8 @@ export default function App() {
             code += `let canExecute = true;\n      `;
             requiredActions.forEach((action, i) => {
                 let v = variables.find(v => v.id === action.varId);
-                if (v) {
-                    code += `let val${i} = getVar("${v.scope}", "${v.name}", player);\n      if (${v.min !== null} && (val${i} + (${action.amount})) < ${v.min}) { canExecute = false; player.sendMessage("§cNot enough ${v.name}!"); }\n      `;
+                if (v && v.min !== null && action.amount < 0) {
+                    code += `let val${i} = getVar("${v.scope}", "${v.name}", player);\n      if ((val${i} + (${action.amount})) < ${v.min}) { canExecute = false; player.sendMessage("§cNot enough ${v.name}!"); }\n      `;
                 }
             });
             code += `if (!canExecute) return;\n      `;
@@ -437,14 +438,14 @@ ${triggerEventCode}
 ${bookGiveCode}
 
 // --- UI Activation ---
-world.beforeEvents.itemUse.subscribe((event) => {
+world.afterEvents.itemUse.subscribe((event) => {
   if (event.itemStack.typeId === "${openedFrom === 'book' ? 'custom:gui_book' : moddedItemName}") {
     const player = event.source;
     
-    // UI must be shown on the next tick
-    system.run(() => {
+    // UI must be shown on a slight delay to avoid item use overlap cancelling it
+    system.runTimeout(() => {
        showCustomUI(player);
-    });
+    }, 5);
   }
 });
 
@@ -575,6 +576,22 @@ function showCustomUI(player) {
                <button className="px-3 py-1 bg-[#444] text-white text-[11px] font-bold uppercase rounded hover:bg-[#555] transition-colors flex items-center gap-1">
                   <Play className="w-3 h-3" />
                   Preview
+               </button>
+               <button onClick={() => {
+                   let allCode = "BP/scripts/main.js:\n" + generateScriptAPI() + "\n\n";
+                   allCode += "BP/items/custom_gui_book.json:\n" + JSON.stringify({
+                      "format_version": "1.20.50", "minecraft:item": { "description": { "identifier": "custom:gui_book", "menu_category": { "category": "equipment" } }, "components": { "minecraft:icon": "gui_book", "minecraft:display_name": { "value": "GUI Book" }, "minecraft:max_stack_size": 1, "minecraft:hand_equipped": true, "minecraft:cooldown": { "category": "gui_book", "duration": 0.5 } } }
+                   }, null, 2) + "\n\n";
+                   allCode += "RP/items/custom_gui_book.json:\n" + JSON.stringify({
+                      "format_version": "1.20.50", "minecraft:item": { "description": { "identifier": "custom:gui_book" }, "components": { "minecraft:icon": "gui_book" } }
+                   }, null, 2) + "\n\n";
+                   allCode += "BP/manifest.json:\n" + generateBPManifest() + "\n\n";
+                   allCode += "RP/manifest.json:\n" + generateRPManifest() + "\n\n";
+                   allCode += "RP/texts/en_US.lang:\n" + `item.custom:gui_book.name=GUI Book\n\n` + `${[...guiElements, ...bookElements].filter(e=>e.type==='label').map(e => `label.${e.name.replace(/ /g, '_').toLowerCase()} = ${e.props.text}`).join('\n')}` + "\n\n";
+                   navigator.clipboard.writeText(allCode);
+                   alert("Debug Logs Copied!");
+               }} className="px-3 py-1 bg-yellow-600 text-white text-[11px] font-bold uppercase rounded hover:bg-yellow-500 transition-colors flex items-center gap-1">
+                  <FileJson className="w-3 h-3" /> Copy Debug Logs
                </button>
                <button onClick={() => setViewMode('export')} className="px-3 py-1 bg-[#3498db] text-white text-[11px] font-bold uppercase rounded hover:bg-[#2980b9] transition-colors flex items-center gap-1">
                   <Download className="w-3 h-3" /> Export to Bridge
