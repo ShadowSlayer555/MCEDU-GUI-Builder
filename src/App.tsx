@@ -25,7 +25,8 @@ import {
   TextCursorInput,
   CheckSquare,
   Sparkles,
-  Users
+  Users,
+  Terminal
 } from 'lucide-react';
 
 type ElementType = 'panel' | 'button' | 'label' | 'image' | 'dropdown' | 'slider' | 'textfield' | 'toggle' | 'player_picker';
@@ -83,6 +84,7 @@ export default function App() {
   const [rpUuid1, setRpUuid1] = useState(generateUUID);
   const [rpUuid2, setRpUuid2] = useState(generateUUID);
   const [appPhase, setAppPhase] = useState<AppPhase>('setup');
+  const [inGameLogs, setInGameLogs] = useState(false);
   const [openedFrom, setOpenedFrom] = useState<'book' | 'modded_item' | 'hidden'>('book');
   const [moddedItemName, setModdedItemName] = useState('my_mod:magic_wand');
   const [baseBPManifest, setBaseBPManifest] = useState("");
@@ -521,9 +523,28 @@ world.afterEvents.playerSpawn.subscribe((event) => {
 });
 ` : '';
 
+    const interceptorCode = inGameLogs ? `
+// --- Console Interceptor (In-Game Logs) ---
+const originalLog = console.log;
+const originalWarn = console.warn;
+const originalError = console.error;
+console.log = function(...args) {
+    originalLog(...args);
+    try { world.sendMessage("[LOG] " + args.map(a => String(a)).join(" ")); } catch(e) {}
+};
+console.warn = function(...args) {
+    originalWarn(...args);
+    try { world.sendMessage("§e[WARN] " + args.map(a => String(a)).join(" ") + "§r"); } catch(e) {}
+};
+console.error = function(...args) {
+    originalError(...args);
+    try { world.sendMessage("§c[ERROR] " + args.map(a => String(a)).join(" ") + "§r"); } catch(e) {}
+};
+` : '';
+
     return `import { world, system } from "@minecraft/server";
 import { ${formType} } from "@minecraft/server-ui";
-
+${interceptorCode}
 /**
  * Script API Custom UI Generated Code
  * 
@@ -696,6 +717,9 @@ export function showCustomUI(player) {
                <button className="px-3 py-1 bg-[#444] text-white text-[11px] font-bold uppercase rounded hover:bg-[#555] transition-colors flex items-center gap-1">
                   <Play className="w-3 h-3" />
                   Preview
+               </button>
+               <button onClick={() => setInGameLogs(!inGameLogs)} className={`px-3 py-1 text-[11px] font-bold uppercase rounded transition-colors flex items-center gap-1 ${inGameLogs ? 'bg-green-600 text-white hover:bg-green-500' : 'bg-[#444] text-[#aaa] hover:bg-[#555] hover:text-white'}`}>
+                  <Terminal className="w-3 h-3" /> {inGameLogs ? 'Ingame Logs: ON' : 'Ingame Logs: OFF'}
                </button>
                <button onClick={() => {
                    let allCode = "BP/scripts/main.js:\n" + generateScriptAPI() + "\n\n";
