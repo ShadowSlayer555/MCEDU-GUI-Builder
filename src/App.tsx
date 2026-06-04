@@ -24,10 +24,11 @@ import {
   SlidersHorizontal,
   TextCursorInput,
   CheckSquare,
-  Sparkles
+  Sparkles,
+  Users
 } from 'lucide-react';
 
-type ElementType = 'panel' | 'button' | 'label' | 'image' | 'dropdown' | 'slider' | 'textfield' | 'toggle';
+type ElementType = 'panel' | 'button' | 'label' | 'image' | 'dropdown' | 'slider' | 'textfield' | 'toggle' | 'player_picker';
 
 interface EditorElement {
   id: string;
@@ -39,6 +40,7 @@ interface EditorElement {
   name: string;
   props: Record<string, string>;
   variableActions?: { varId: string; amount: number; required?: boolean }[];
+  variableActionsTarget?: { varId: string; amount: number; required?: boolean }[];
 }
 
 type ViewMode = 'designer' | 'variables' | 'export';
@@ -81,7 +83,7 @@ export default function App() {
   const [rpUuid1, setRpUuid1] = useState(generateUUID);
   const [rpUuid2, setRpUuid2] = useState(generateUUID);
   const [appPhase, setAppPhase] = useState<AppPhase>('setup');
-  const [openedFrom, setOpenedFrom] = useState<'book' | 'modded_item'>('book');
+  const [openedFrom, setOpenedFrom] = useState<'book' | 'modded_item' | 'hidden'>('book');
   const [moddedItemName, setModdedItemName] = useState('my_mod:magic_wand');
   const [baseBPManifest, setBaseBPManifest] = useState("");
   const [baseRPManifest, setBaseRPManifest] = useState("");
@@ -334,10 +336,10 @@ export default function App() {
   };
 
   const generateScriptAPI = () => {
-    const isModal = guiElements.some(e => ['dropdown', 'slider', 'textfield', 'toggle'].includes(e.type));
+    const isModal = guiElements.some(e => ['dropdown', 'slider', 'textfield', 'toggle', 'player_picker'].includes(e.type));
     const buttons = guiElements.filter(e => e.type === 'button');
     const labels = guiElements.filter(e => e.type === 'label');
-    const inputs = guiElements.filter(e => ['dropdown', 'slider', 'textfield', 'toggle'].includes(e.type));
+    const inputs = guiElements.filter(e => ['dropdown', 'slider', 'textfield', 'toggle', 'player_picker'].includes(e.type));
     
     const title = labels[0]?.props.text || "Custom UI";
 
@@ -362,7 +364,7 @@ export default function App() {
 
     let logicCode = "";
 
-    const generateVarActionCode = (btnActions?: {varId: string; amount: number; required?: boolean}[]) => {
+    const generateVarActionCode = (btnActions?: {varId: string; amount: number; required?: boolean}[], targetName: string = "player") => {
         if (!btnActions || btnActions.length === 0) return '';
         let code = '';
         const requiredActions = btnActions.filter(a => a.required);
@@ -371,29 +373,35 @@ export default function App() {
             requiredActions.forEach((action, i) => {
                 let v = variables.find(v => v.id === action.varId);
                 if (v && v.min !== null && action.amount < 0) {
-                    code += `let val${i} = getVar("${v.scope}", "${v.name}", player);\n      if ((val${i} + (${action.amount})) < ${v.min}) { canExecute = false; player.sendMessage("§cNot enough ${v.name}!"); }\n      `;
+                    code += `let val${i} = getVar("${v.scope}", "${v.name}", ${targetName});\n      if ((val${i} + (${action.amount})) < ${v.min}) { canExecute = false; ${targetName}.sendMessage("§cNot enough ${v.name}!"); }\n      `;
                 }
             });
             code += `if (!canExecute) return;\n      `;
         }
-
         code += btnActions.map(action => {
             let v = variables.find(v => v.id === action.varId);
             if (!v) return '';
-            return `let val_${v.name} = getVar("${v.scope}", "${v.name}", player);
-      setVar("${v.scope}", "${v.name}", player, val_${v.name} + (${action.amount}), ${v.min !== null ? v.min : 'null'}, ${v.max !== null ? v.max : 'null'});
-      player.sendMessage("§a${v.name} is now: " + getVar("${v.scope}", "${v.name}", player));`;
+            return `let val_${v.name} = getVar("${v.scope}", "${v.name}", ${targetName});
+      setVar("${v.scope}", "${v.name}", ${targetName}, val_${v.name} + (${action.amount}), ${v.min !== null ? v.min : 'null'}, ${v.max !== null ? v.max : 'null'});
+      ${targetName}.sendMessage("§a${v.name} is now: " + getVar("${v.scope}", "${v.name}", ${targetName}));`;
         }).join('\n      ');
         return code;
     };
 
     if (isModal) {
+      if (inputs.some(i => i.type === 'player_picker')) {
+          formBuilder = `const allPlayers = world.getAllPlayers();\n  const playerNames = allPlayers.length > 0 ? allPlayers.map(p => p.name) : ["No players online"];\n  ` + formBuilder;
+      }
+
       const formFields = inputs.map((input, index) => {
          const name = input.props.text || input.name;
          if (input.type === 'dropdown') {
             const options = (input.props.dropdownOptions || "Option 1, Option 2").split(',').map(o => `"${o.trim()}"`).join(', ');
             const defaultIdx = input.props.dropdownDefault || '0';
             return `form.dropdown("${name}", [${options}], ${defaultIdx});`;
+         }
+         if (input.type === 'player_picker') {
+            return `form.dropdown("${name}", playerNames, 0);`;
          }
          if (input.type === 'slider') {
             const min = input.props.sliderMin || '0';
@@ -421,7 +429,31 @@ export default function App() {
       formBuilder += `\n  ${formFields}`;
       formBuilder += `\n  form.submitButton("${submitText}");`;
 
-      logicCode = `const formValues = response.formValues;\n    player.sendMessage("Form submitted! Values: " + JSON.stringify(formValues));\n      ${submitBtn ? generateVarActionCode(submitBtn.variableActions) : ''}`;
+      logicCode = `const formValues = response.formValues;\n    player.sendMessage("Form submitted!");`;
+      
+      inputs.forEach((input, index) => {
+         if (input.type === 'textfield' && input.props.correctAnswer && input.variableActions?.length) {
+            logicCode += `\n    if (formValues[${index}] === "${input.props.correctAnswer}") {`;
+            logicCode += `\n        player.sendMessage("§aCorrect Answer!");`;
+            logicCode += `\n        ${generateVarActionCode(input.variableActions)}`;
+            logicCode += `\n    } else { player.sendMessage("§cIncorrect Answer."); }`;
+         }
+         if (input.type === 'player_picker' && (input.variableActions?.length || input.variableActionsTarget?.length)) {
+             logicCode += `\n    const targetPlayerIndex_${index} = formValues[${index}];\n    const targetPlayer_${index} = allPlayers[targetPlayerIndex_${index}];`;
+             logicCode += `\n    if (targetPlayer_${index}) {`;
+             if (input.variableActions?.length) {
+                 logicCode += `\n        ${generateVarActionCode(input.variableActions, "player")}`;
+             }
+             if (input.variableActionsTarget?.length) {
+                 logicCode += `\n        ${generateVarActionCode(input.variableActionsTarget, `targetPlayer_${index}`)}`;
+             }
+             logicCode += `\n    }`;
+         }
+      });
+      
+      if (submitBtn) {
+          logicCode += `\n    ${generateVarActionCode(submitBtn.variableActions)}`;
+      }
     } else {
       const btnCode = buttons.map((btn) => {
           let text = btn.props.text || btn.name;
@@ -526,7 +558,7 @@ ${triggerEventCode}
 ${bookGiveCode}
 
 // --- UI Activation ---
-world.afterEvents.itemUse.subscribe((event) => {
+${openedFrom === 'hidden' ? `// Form is configured as hidden. Call showCustomUI(player) from your own scripts to open it.` : `world.afterEvents.itemUse.subscribe((event) => {
   if (event.itemStack.typeId === "${openedFrom === 'book' ? 'custom:gui_book' : moddedItemName}") {
     const player = event.source;
     
@@ -535,9 +567,9 @@ world.afterEvents.itemUse.subscribe((event) => {
        showCustomUI(player);
     }, 5);
   }
-});
+});`}
 
-function showCustomUI(player) {
+export function showCustomUI(player) {
   ${formBuilder}
 
   form.show(player).then((response) => {
@@ -703,11 +735,12 @@ function showCustomUI(player) {
                        <label className="text-[11px] font-bold text-[#aaa] uppercase tracking-wider">GUI Opened From</label>
                        <select 
                           value={openedFrom} 
-                          onChange={(e) => setOpenedFrom(e.target.value as 'book' | 'modded_item')}
+                          onChange={(e) => setOpenedFrom(e.target.value as 'book' | 'modded_item' | 'hidden')}
                           className="bg-[#111] border border-[#333] px-3 py-2 rounded text-white text-sm outline-none focus:border-blue-500"
                        >
                           <option value="book">Book (Given to all on spawn)</option>
                           <option value="modded_item">Modded Item</option>
+                          <option value="hidden">Hidden (Triggered by Variables/AI Code)</option>
                        </select>
                     </div>
 
@@ -767,6 +800,9 @@ function showCustomUI(player) {
               <button onClick={() => addElement('toggle')} className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer">
                  <CheckSquare className="w-3 h-3" /> Toggle
               </button>
+              <button onClick={() => addElement('player_picker')} className="h-8 bg-[#333] border border-[#444] rounded flex flex-col items-center justify-center gap-0.5 text-[9px] text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer" style={{ gridColumn: 'span 2' }}>
+                 <div className="flex items-center gap-1.5"><Users className="w-3 h-3" /> Player Picker</div>
+              </button>
             </div>
           </div>
           
@@ -799,7 +835,7 @@ function showCustomUI(player) {
 
         {/* Center: Canvas Viewport */}
         <main 
-           className="flex-1 bg-[#121212] relative overflow-hidden flex items-center justify-center shadow-inner"
+           className="flex-1 bg-[#202020] relative overflow-hidden flex items-center justify-center shadow-inner"
            onPointerMove={handlePointerMove}
            onPointerUp={handlePointerUp}
            onPointerLeave={handlePointerUp}
@@ -808,16 +844,16 @@ function showCustomUI(player) {
           <div 
             className="absolute inset-0 pointer-events-none" 
             style={{ 
-               backgroundImage: 'radial-gradient(#333 1px, transparent 1px)', 
-               backgroundSize: '10px 10px',
-               opacity: 0.5
+               backgroundImage: 'radial-gradient(#3c3c3c 1px, transparent 1px)', 
+               backgroundSize: '12px 12px',
+               opacity: 0.8
             }}
           />
           
           {/* Main Working Canvas */}
           <div 
              ref={canvasRef}
-             className="relative w-[800px] h-[500px] bg-transparent border border-[#333] overflow-hidden"
+             className="relative w-[800px] h-[500px] bg-transparent border border-[#3C3D3F] overflow-hidden rounded-sm"
              onPointerDown={() => setSelectedId(null)}
           >
              {elements.map(el => {
@@ -833,56 +869,69 @@ function showCustomUI(player) {
                         width: el.width,
                         height: el.height,
                         cursor: isDragging && isSelected ? 'grabbing' : 'grab',
-                        border: isSelected ? '1px solid #3498db' : '1px solid transparent',
-                        boxShadow: isSelected ? '0 0 0 1px rgba(52, 152, 219, 0.4)' : 'none',
+                        border: isSelected ? '2px solid #5A8F43' : (el.type === 'panel' ? '2px solid transparent' : '1px solid transparent'),
+                        boxShadow: isSelected ? '0 0 0 2px rgba(90, 143, 67, 0.4)' : (el.type === 'panel' && !el.props.previewImage ? '0px 2px 4px rgba(0,0,0,0.4)' : 'none'),
                         zIndex: isSelected ? 10 : 1,
                         backgroundImage: (el.type === 'panel' || el.type === 'image') && el.props.previewImage ? `url(${el.props.previewImage})` : 'none',
                         backgroundSize: '100% 100%',
-                        backgroundRepeat: 'no-repeat'
+                        backgroundRepeat: 'no-repeat',
+                        borderRadius: el.type === 'panel' ? '4px' : '2px',
                      }}
                      className={`
-                        ${el.type === 'panel' && !el.props.previewImage ? 'bg-[#c6c6c6] border-[2px] border-t-white border-l-white border-b-[#555] border-r-[#555]' : ''}
-                        ${el.type === 'button' ? 'bg-[#d0d0d0] border-[2px] border-t-white border-l-white border-b-[#555] border-r-[#555] flex items-center justify-center active:border-t-[#555] active:border-l-[#555] active:border-b-white active:border-r-white' : ''}
-                        ${el.type === 'image' && !el.props.previewImage ? 'bg-[#333] opacity-80' : ''}
-                        ${['dropdown', 'textfield'].includes(el.type) ? 'bg-[#1e1e1e] border border-[#555] flex items-center px-2' : ''}
+                        ${el.type === 'panel' && !el.props.previewImage ? 'bg-[#313233] border-[#1E1E1E]' : ''}
+                        ${el.type === 'button' ? 'bg-[#3C3D3F] border-[#1E1E1E] flex items-center justify-center hover:bg-[#5A5B5D] active:border-white' : ''}
+                        ${el.type === 'image' && !el.props.previewImage ? 'bg-[#2E2E2E] opacity-80' : ''}
+                        ${['dropdown', 'textfield', 'player_picker'].includes(el.type) ? 'bg-[#1E1E20] border-[#111112] shadow-inner flex items-center px-3' : ''}
                         ${el.type === 'slider' ? 'bg-transparent flex flex-col justify-center' : ''}
                         ${el.type === 'toggle' ? 'bg-transparent flex items-center gap-2' : ''}
                      `}
                    >
                      {el.type === 'label' && (
-                        <div className="w-full h-full flex items-center font-mono text-[#404040]" style={{fontSize: '16px', textShadow: '2px 2px 0px #eee'}}>{el.props.text || 'Label'}</div>
+                        <div className="w-full h-full flex items-center font-sans text-white text-sm" style={{textShadow: '0px 1px 2px rgba(0,0,0,0.8)'}}>{el.props.text || 'Label'}</div>
                      )}
                      {el.type === 'button' && (
-                         <div className="w-full h-full flex items-center justify-center font-mono text-[#404040] text-sm pointer-events-none select-none">
+                         <div className="w-full h-full flex items-center justify-center font-sans text-white text-sm drop-shadow pointer-events-none select-none">
                             {el.props.text ? el.props.text : el.name}
                          </div>
                      )}
-                     {['dropdown', 'textfield'].includes(el.type) && (
-                        <div className="text-[#aaa] text-sm font-mono truncate w-full pointer-events-none select-none">{el.type === 'textfield' ? (el.props.textFieldDefault || el.props.textFieldPlaceholder || el.props.text || el.name) : (el.props.text || el.name)}</div>
+                     {['dropdown', 'textfield', 'player_picker'].includes(el.type) && (
+                        <div className="text-white text-sm font-sans truncate w-full pointer-events-none select-none drop-shadow flex justify-between items-center">
+                           <span>{el.type === 'textfield' ? (el.props.textFieldDefault || el.props.textFieldPlaceholder || el.props.text || el.name) : (el.type === 'player_picker' ? (el.props.text || 'Select Player...') : (el.props.text || el.name))}</span>
+                           {el.type === 'player_picker' && <Users className="w-3 h-3 text-[#aaa]" />}
+                        </div>
                      )}
                      {el.type === 'slider' && (
                         <>
-                           <div className="text-[#aaa] text-xs font-mono mb-1 pointer-events-none select-none">{el.props.text || el.name} ({el.props.sliderDefault || '0'})</div>
-                           <div className="w-full h-1 bg-[#555] rounded relative">
-                              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-4 bg-[#d0d0d0] border border-[#555]" />
+                           <div className="text-white text-sm font-sans mb-1.5 drop-shadow pointer-events-none select-none">{el.props.text || el.name} ({el.props.sliderDefault || '0'})</div>
+                           <div className="w-full h-2 bg-[#1E1E20] border border-[#111112] rounded-full relative shadow-inner">
+                              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-5 bg-[#3C3D3F] hover:bg-[#5A5B5D] border border-white rounded-sm" />
+                              <div className="absolute top-0 left-0 w-1/2 h-full bg-[#5A8F43] rounded-l-full pointer-events-none" />
                            </div>
                         </>
                      )}
                      {el.type === 'toggle' && (
                         <>
-                           <div className="w-4 h-4 border border-[#555] bg-[#1e1e1e] flex items-center justify-center">
-                              {el.props.toggleDefault === 'true' ? <CheckSquare className="w-3 h-3 text-[#aaa]" /> : <div className="w-2 h-2" />}
+                           <div className="w-10 h-5 border border-[#111112] bg-[#1E1E20] rounded-full flex items-center p-0.5 shadow-inner">
+                              {el.props.toggleDefault === 'true' ? (
+                                  <div className="w-9 h-full flex justify-end">
+                                      <div className="w-4 h-full bg-[#5A8F43] rounded-full shadow-sm" />
+                                  </div>
+                              ) : (
+                                  <div className="w-9 h-full flex justify-start">
+                                      <div className="w-4 h-full bg-[#3C3D3F] rounded-full shadow-sm border border-[#1E1E1E]" />
+                                  </div>
+                              )}
                            </div>
-                           <div className="text-[#aaa] text-sm font-mono pointer-events-none select-none">{el.props.text || el.name}</div>
+                           <div className="text-white text-sm font-sans font-medium drop-shadow pointer-events-none select-none">{el.props.text || el.name}</div>
                         </>
                      )}
                      
                      {isSelected && (
                         <>
-                           <div className="absolute -top-1 -left-1 w-2 h-2 bg-blue-500 border border-white" />
-                           <div className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 border border-white" />
-                           <div className="absolute -bottom-1 -left-1 w-2 h-2 bg-blue-500 border border-white" />
-                           <div className="absolute -bottom-1 -right-1 w-2 h-2 bg-blue-500 border border-white" />
+                           <div className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-[#5A8F43] border-2 border-white rounded-sm" />
+                           <div className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-[#5A8F43] border-2 border-white rounded-sm" />
+                           <div className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-[#5A8F43] border-2 border-white rounded-sm" />
+                           <div className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-[#5A8F43] border-2 border-white rounded-sm" />
                         </>
                      )}
                    </div>
@@ -890,17 +939,17 @@ function showCustomUI(player) {
              })}
           </div>
 
-          <div className="absolute left-6 top-6 flex flex-col gap-1 z-20 shadow-xl">
-             <div className="w-10 h-10 bg-[#1e1e1e] border-2 border-blue-500 rounded flex items-center justify-center text-blue-400 cursor-pointer shadow-[0_0_10px_rgba(59,130,246,0.3)]" title="Selection Tool">
-               <MousePointer2 className="w-4 h-4 text-blue-400" />
+          <div className="absolute left-6 top-6 flex flex-col gap-2 z-20">
+             <div className="w-10 h-10 bg-[#313233] border border-[#1E1E1E] rounded shadow-md flex items-center justify-center text-white cursor-pointer hover:bg-[#3C3D3F] hover:border-white transition-all shadow-[0_4px_10px_rgba(0,0,0,0.5)]" title="Selection Tool">
+               <MousePointer2 className="w-4 h-4 text-[#5A8F43]" />
             </div>
           </div>
 
           <div className="absolute bottom-4 left-4 flex gap-4 pointer-events-none">
-             <div className="text-[10px] text-[#777] uppercase tracking-widest font-mono bg-[#111]/80 px-2 py-1 rounded backdrop-blur">
-               Preview: GUI_Scale_Modern
+             <div className="text-xs text-white uppercase tracking-wider font-sans bg-[#1E1E20]/90 border border-[#111112] px-3 py-1.5 rounded-sm shadow-md backdrop-blur">
+               Preview: Ore UI (1.21+)
              </div>
-              <div className="text-[10px] text-[#777] uppercase tracking-widest font-mono bg-[#111]/80 px-2 py-1 rounded backdrop-blur">
+              <div className="text-xs text-white uppercase tracking-wider font-sans bg-[#1E1E20]/90 border border-[#111112] px-3 py-1.5 rounded-sm shadow-md backdrop-blur">
                Snap to Grid: 10px
              </div>
           </div>
@@ -1089,6 +1138,14 @@ function showCustomUI(player) {
                                    onChange={(e) => updateSelectedProp('textFieldDefault', e.target.value)}
                                    className="bg-[#111] border border-[#333] rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
                                 />
+                                <label className="text-[9px] text-[#888] mt-1 text-green-400">Correct Answer (Trigger Actions)</label>
+                                <input 
+                                   type="text" 
+                                   value={selectedElement.props.correctAnswer || ''} 
+                                   onChange={(e) => updateSelectedProp('correctAnswer', e.target.value)}
+                                   placeholder="Case sensitive string..."
+                                   className="bg-[#111] border border-green-900 rounded px-2 py-1.5 text-[11px] outline-none text-green-400 focus:border-green-500 font-mono w-full"
+                                />
                               </div>
                            )}
 
@@ -1123,10 +1180,10 @@ function showCustomUI(player) {
                         </div>
                      )}
 
-                     {selectedElement.type === 'button' && variables.length > 0 && (
+                     {['button', 'textfield', 'player_picker'].includes(selectedElement.type) && variables.length > 0 && (
                         <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-[#333]">
                            <div className="flex items-center justify-between">
-                             <span className="text-[10px] font-bold text-[#666] uppercase">Variable Modifiers</span>
+                             <span className="text-[10px] font-bold text-[#666] uppercase">{selectedElement.type === 'player_picker' ? 'Action on Executor' : 'Variable Modifiers'}</span>
                              <button onClick={() => {
                                  const acts = selectedElement.variableActions || [];
                                  setElements(prev => prev.map(el => el.id === selectedId ? { ...el, variableActions: [...acts, { varId: variables[0].id, amount: 1, required: false }] } : el));
@@ -1166,6 +1223,45 @@ function showCustomUI(player) {
                                  </div>
                               ))}
                            </div>
+
+                           {selectedElement.type === 'player_picker' && (
+                              <>
+                                 <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#333]">
+                                   <span className="text-[10px] font-bold text-orange-400 uppercase">Action on Target</span>
+                                   <button onClick={() => {
+                                       const acts = selectedElement.variableActionsTarget || [];
+                                       setElements(prev => prev.map(el => el.id === selectedId ? { ...el, variableActionsTarget: [...acts, { varId: variables[0].id, amount: 1, required: false }] } : el));
+                                   }} className="text-[#3498db] text-[10px] font-bold uppercase hover:underline">+ Add Action</button>
+                                 </div>
+                                 <div className="flex flex-col gap-2">
+                                    {selectedElement.variableActionsTarget?.map((act, idx) => (
+                                       <div key={idx} className="flex flex-col gap-1 bg-[#111] p-1.5 rounded border border-[#5a3a14]">
+                                          <div className="flex gap-1 items-center">
+                                             <select value={act.varId} onChange={(e) => {
+                                                const acts = [...(selectedElement.variableActionsTarget||[])];
+                                                acts[idx].varId = e.target.value;
+                                                setElements(prev => prev.map(el => el.id === selectedId ? { ...el, variableActionsTarget: acts } : el));
+                                             }} className="bg-[#2a1a0f] border border-[#5a3a14] text-[10px] text-orange-300 rounded p-1 flex-1">
+                                                {variables.map(v => <option key={v.id} value={v.id}>{v.name} ({v.scope})</option>)}
+                                             </select>
+                                             <span className="text-[#888] text-[10px] font-bold">+</span>
+                                             <input type="number" value={act.amount} onChange={(e) => {
+                                                const acts = [...(selectedElement.variableActionsTarget||[])];
+                                                acts[idx].amount = parseFloat(e.target.value);
+                                                setElements(prev => prev.map(el => el.id === selectedId ? { ...el, variableActionsTarget: acts } : el));
+                                             }} className="bg-[#2a1a0f] border border-[#5a3a14] text-[10px] text-orange-300 rounded p-1 w-12 text-center" />
+                                             <button onClick={() => {
+                                                const acts = [...(selectedElement.variableActionsTarget||[])];
+                                                acts.splice(idx, 1);
+                                                setElements(prev => prev.map(el => el.id === selectedId ? { ...el, variableActionsTarget: acts } : el));
+                                             }} className="text-red-400 text-[10px] font-bold px-1 hover:text-red-300">X</button>
+                                          </div>
+                                       </div>
+                                    ))}
+                                 </div>
+                              </>
+                           )}
+
                         </div>
                      )}
 
@@ -1619,6 +1715,15 @@ text = `{
                   <br/><br/>
                   <b>Modern Solution:</b> Export your GUI as a Behavior Pack Script using the new <b>BP/scripts/main.js (Script API)</b> export option on the left. It uses strictly supported <code>@minecraft/server-ui</code> ActionFormData which works natively in 1.21+!
                </div>
+
+               {guiElements.some(e => ['dropdown', 'slider', 'textfield', 'toggle'].includes(e.type)) && guiElements.some(e => e.type === 'label') && (
+                  <div className="bg-[#3a1a1a] border-b border-[#dd3b3b] text-[#ffa3a3] p-3 text-xs leading-relaxed">
+                     <div className="font-bold flex items-center gap-1.5 mb-1"><span role="img" aria-label="error">⚠️</span> Missing Labels Warning</div>
+                     You have added both <b>Form Inputs</b> (Dropdown, Slider, etc.) and <b>Labels</b>. 
+                     Because Minecraft's <code>ModalFormData</code> does not support text bodies natively, your labels will be hidden in the exported Script API code.
+                     Only the very first label will be preserved as the Form Title.
+                  </div>
+               )}
 
                <div className="flex-1 p-4 overflow-auto custom-scrollbar">
                   <pre className="text-[12px] font-mono text-[#dcdcaa] leading-relaxed">
