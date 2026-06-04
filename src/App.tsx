@@ -52,9 +52,9 @@ const generateUUID = () => {
 };
 
 const MC_EVENTS = [
-  'blockBreak', 'blockPlace', 'buttonPush', 'chatSend', 'entityDie', 'entityHurt', 
+  'playerBreakBlock', 'playerPlaceBlock', 'buttonPush', 'chatSend', 'entityDie', 'entityHurt', 
   'entityHitEntity', 'entityHitBlock', 'itemCompleteUse', 'itemReleaseUse', 
-  'itemStartUse', 'itemUse', 'itemUseOn', 'playerBreakBlock', 'playerPlaceBlock', 
+  'itemStartUse', 'itemUse', 'itemUseOn', 
   'playerJoin', 'playerLeave', 'playerSpawn', 'weatherChange', 'tick', 'complex_script'
 ];
 
@@ -445,23 +445,31 @@ export default function App() {
 
     const triggerEventCode = variables.map(v => {
        return (v.increments || []).map(inc => {
-          if (inc.event === 'tick') {
+          let resolvedEventName = inc.event;
+          if (resolvedEventName === 'blockBreak') resolvedEventName = 'playerBreakBlock';
+          if (resolvedEventName === 'blockPlace') resolvedEventName = 'playerPlaceBlock';
+          
+          if (resolvedEventName === 'tick') {
              return `system.runInterval(() => {
   for (const p of world.getAllPlayers()) {
     let val = getVar("${v.scope}", "${v.name}", p);
     setVar("${v.scope}", "${v.name}", p, val + (${inc.amount}), ${v.min !== null ? v.min : 'null'}, ${v.max !== null ? v.max : 'null'});
   }
 }, 20); // Runs once every second (20 ticks)`;
-          } else if (inc.event === 'complex_script') {
+          } else if (resolvedEventName === 'complex_script') {
              return inc.aiGeneratedCode || `// TODO: Define custom AI logic for "${v.name}" here!\n// world.afterEvents.entityHurt.subscribe((event) => { /* logic */ });`;
           } else {
-             return `world.afterEvents.${inc.event}.subscribe((event) => {
-  let p = event.player || event.sourceEntity || event.source;
-  if (${v.scope === 'player' ? `p && p.typeId === 'minecraft:player'` : `true`}) {
-    let val = getVar("${v.scope}", "${v.name}", p);
-    setVar("${v.scope}", "${v.name}", p, val + (${inc.amount}), ${v.min !== null ? v.min : 'null'}, ${v.max !== null ? v.max : 'null'});
-  }
-});`;
+             return `try {
+  world.afterEvents.${resolvedEventName}.subscribe((event) => {
+    let p = event.player || event.sourceEntity || event.source;
+    if (${v.scope === 'player' ? `p && p.typeId === 'minecraft:player'` : `true`}) {
+      let val = getVar("${v.scope}", "${v.name}", p);
+      setVar("${v.scope}", "${v.name}", p, val + (${inc.amount}), ${v.min !== null ? v.min : 'null'}, ${v.max !== null ? v.max : 'null'});
+    }
+  });
+} catch(err) {
+  console.warn("Could not bind event '${resolvedEventName}' - it may be a legacy name or unsupported in this Minecraft version.");
+}`;
           }
        }).join('\n\n');
     }).filter(Boolean).join('\n\n');
