@@ -457,24 +457,32 @@ export default function App() {
           logicCode += `\n    ${generateVarActionCode(submitBtn.variableActions)}`;
       }
     } else {
-      const btnCode = buttons.map((btn) => {
-          let text = btn.props.text || btn.name;
-          let iconStr = btn.props.texture ? `, "${btn.props.texture}"` : '';
-          return `.button("${text}"${iconStr})`;
+      const actionUIElements = guiElements.filter(e => e.type === 'button' || e.type === 'image');
+
+      const btnCode = actionUIElements.map((el) => {
+          if (el.type === 'image') {
+              let iconStr = el.props.texture ? `, "${el.props.texture}"` : '';
+              return `.button(""${iconStr})`;
+          } else {
+              let text = el.props.text || el.name;
+              let iconStr = el.props.texture ? `, "${el.props.texture}"` : '';
+              return `.button("${text}"${iconStr})`;
+          }
       }).join("\n    ");
       
-      if (buttons.length > 0) {
+      if (actionUIElements.length > 0) {
         formBuilder += `\n  form\n    ${btnCode};`;
       }
       
-      logicCode = buttons.map((btn, i) => {
-          let actionCode = generateVarActionCode(btn.variableActions);
+      logicCode = actionUIElements.map((el, i) => {
+          if (el.type === 'image') return '';
+          let actionCode = generateVarActionCode(el.variableActions);
           return `if (response.selection === ${i}) {
-      // Player clicked ${btn.props.text || btn.name}
-      player.sendMessage("You clicked ${btn.props.text || btn.name}!");
+      // Player clicked ${el.props.text || el.name}
+      player.sendMessage("You clicked ${el.props.text || el.name}!");
       ${actionCode}
     }`;
-      }).join(" else ");
+      }).filter(Boolean).join(" else ");
     }
 
     const triggerEventCode = variables.map(v => {
@@ -1289,7 +1297,7 @@ export function showCustomUI(player) {
                         </div>
                      )}
 
-                     {(selectedElement.type === 'image' || selectedElement.type === 'panel') && (
+                     {['image', 'panel', 'button'].includes(selectedElement.type) && (
                         <div className="flex flex-col gap-2">
                            <span className="text-[10px] font-bold text-[#666] uppercase">Texture Settings</span>
                            <div className="flex flex-col gap-1 mb-2">
