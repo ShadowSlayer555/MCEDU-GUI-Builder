@@ -26,7 +26,8 @@ import {
   CheckSquare,
   Sparkles,
   Users,
-  Terminal
+  Terminal,
+  GripVertical
 } from 'lucide-react';
 
 type ElementType = 'panel' | 'button' | 'label' | 'image' | 'dropdown' | 'slider' | 'textfield' | 'toggle' | 'player_picker';
@@ -104,6 +105,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('designer');
   const [selectedFile, setSelectedFile] = useState<string>('BP/scripts/main.js');
   
@@ -114,6 +116,37 @@ export default function App() {
     } else {
       setGuiElements(value);
     }
+  };
+
+  const handleLayerDragStart = (e: React.DragEvent, id: string) => {
+    setDraggedLayerId(id);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", id);
+  };
+
+  const handleLayerDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
+
+  const handleLayerDrop = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    if (!draggedLayerId || draggedLayerId === targetId) {
+      setDraggedLayerId(null);
+      return;
+    }
+
+    const items = [...elements];
+    const draggedIndex = items.findIndex(el => el.id === draggedLayerId);
+    const targetIndex = items.findIndex(el => el.id === targetId);
+    
+    if (draggedIndex !== -1 && targetIndex !== -1) {
+      const [reorderedItem] = items.splice(draggedIndex, 1);
+      items.splice(targetIndex, 0, reorderedItem);
+      setElements(items);
+    }
+    
+    setDraggedLayerId(null);
   };
   
   const [aiPrompt, setAiPrompt] = useState("");
@@ -874,9 +907,15 @@ export function showCustomUI(player) {
                {elements.slice().reverse().map(el => (
                   <div 
                     key={el.id}
+                    draggable
+                    onDragStart={(e) => handleLayerDragStart(e, el.id)}
+                    onDragOver={handleLayerDragOver}
+                    onDrop={(e) => handleLayerDrop(e, el.id)}
+                    onDragEnd={() => setDraggedLayerId(null)}
                     onClick={() => setSelectedId(el.id)}
-                    className={`p-2 mx-1 rounded flex items-center gap-2 mb-1 cursor-pointer transition-colors ${selectedId === el.id ? 'bg-[#333] border-l-2 border-blue-500' : 'border-l-2 border-transparent hover:bg-[#2a2a2a]'}`}
+                    className={`p-2 mx-1 rounded flex items-center gap-2 mb-1 cursor-pointer transition-colors ${selectedId === el.id ? 'bg-[#333] border-l-2 border-blue-500' : 'border-l-2 border-transparent hover:bg-[#2a2a2a]'} ${draggedLayerId === el.id ? 'opacity-50' : ''}`}
                   >
+                     <GripVertical className="w-3 h-3 text-[#555] cursor-grab active:cursor-grabbing" />
                      {el.type === 'panel' && <Square className="w-3 h-3 text-[#aaa]" />}
                      {el.type === 'button' && <MousePointer2 className="w-3 h-3 text-[#aaa]" />}
                      {el.type === 'label' && <Type className="w-3 h-3 text-[#aaa]" />}
