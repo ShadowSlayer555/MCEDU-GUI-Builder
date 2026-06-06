@@ -44,8 +44,14 @@ interface EditorElement {
   variableActionsTarget?: { varId: string; amount: number; required?: boolean }[];
 }
 
-type ViewMode = 'designer' | 'variables' | 'export';
+type ViewMode = 'designer' | 'variables' | 'export' | 'triggers';
 type AppPhase = 'setup' | 'builder';
+
+interface CustomTrigger {
+    id: string;
+    type: 'itemUse' | 'blockBreak' | 'entityHit' | 'chatCommand';
+    config: any;
+}
 
 const generateUUID = () => {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -84,6 +90,7 @@ export default function App() {
   const [rpUuid1, setRpUuid1] = useState(generateUUID);
   const [rpUuid2, setRpUuid2] = useState(generateUUID);
   const [appPhase, setAppPhase] = useState<AppPhase>('setup');
+  const [customTriggers, setCustomTriggers] = useState<CustomTrigger[]>([]);
   const [inGameLogs, setInGameLogs] = useState(false);
   const [openedFrom, setOpenedFrom] = useState<'book' | 'modded_item' | 'hidden'>('book');
   const [moddedItemName, setModdedItemName] = useState('my_mod:magic_wand');
@@ -516,6 +523,17 @@ export default function App() {
        }).join('\n\n');
     }).filter(Boolean).join('\n\n');
 
+    let customTriggersCode = '';
+    if (openedFrom === 'hidden' && customTriggers.length > 0) {
+        customTriggersCode = `// --- Custom Triggers ---\n` + customTriggers.map(t => {
+           if (t.type === 'itemUse') return `world.afterEvents.itemUse.subscribe((event) => {\n  if (event.itemStack.typeId === "${t.config.itemId || 'minecraft:stick'}") {\n    system.runTimeout(() => { showCustomUI(event.source); }, 5);\n  }\n});`;
+           if (t.type === 'blockBreak') return `world.afterEvents.playerBreakBlock.subscribe((event) => {\n  if (event.block.typeId === "${t.config.blockId || 'minecraft:dirt'}") {\n    system.runTimeout(() => { showCustomUI(event.player); }, 5);\n  }\n});`;
+           if (t.type === 'entityHit') return `world.afterEvents.entityHitEntity.subscribe((event) => {\n  if (event.hitEntity.typeId === "${t.config.entityId || 'minecraft:cow'}" && event.damagingEntity.typeId === "minecraft:player") {\n    system.runTimeout(() => { showCustomUI(event.damagingEntity); }, 5);\n  }\n});`;
+           if (t.type === 'chatCommand') return `world.beforeEvents.chatSend.subscribe((event) => {\n  if (event.message === "${t.config.command || '!showgui'}") {\n    event.cancel = true;\n    system.runTimeout(() => { showCustomUI(event.sender); }, 5);\n  }\n});`;
+           return '';
+        }).join('\n\n');
+    }
+
     const bookGiveCode = openedFrom === 'book' ? `
 // Automatically give GUI Book to players on first join
 world.afterEvents.playerSpawn.subscribe((event) => {
@@ -597,6 +615,8 @@ ${openedFrom === 'hidden' ? `// Form is configured as hidden. Call showCustomUI(
     }, 5);
   }
 });`}
+
+${customTriggersCode}
 
 export function showCustomUI(player) {
   ${formBuilder}
@@ -711,6 +731,9 @@ export function showCustomUI(player) {
              <nav className="flex gap-4 text-xs font-medium uppercase tracking-wider text-[#999]">
                <span onClick={() => setViewMode('designer')} className={`cursor-pointer transition-colors ${viewMode === 'designer' ? 'text-blue-400 font-bold' : 'hover:text-white'}`}>GUI Designer</span>
                <span onClick={() => setViewMode('variables')} className={`cursor-pointer transition-colors ${viewMode === 'variables' ? 'text-blue-400 font-bold' : 'hover:text-white'}`}>Variables</span>
+               {openedFrom === 'hidden' && (
+                   <span onClick={() => setViewMode('triggers')} className={`cursor-pointer transition-colors ${viewMode === 'triggers' ? 'text-blue-400 font-bold' : 'hover:text-white'}`}>Triggers</span>
+               )}
                <span onClick={() => setViewMode('export')} className={`cursor-pointer transition-colors ${viewMode === 'export' ? 'text-blue-400 font-bold' : 'hover:text-white'}`}>Code & Export</span>
              </nav>
           )}
@@ -731,15 +754,18 @@ export function showCustomUI(player) {
                </button>
                <button onClick={() => {
                    let allCode = "BP/scripts/main.js:\n" + generateScriptAPI() + "\n\n";
-                   allCode += "BP/items/custom_gui_book.json:\n" + JSON.stringify({
-                      "format_version": "1.20.50", "minecraft:item": { "description": { "identifier": "custom:gui_book", "menu_category": { "category": "equipment" } }, "components": { "minecraft:icon": "gui_book", "minecraft:display_name": { "value": "GUI Book" }, "minecraft:max_stack_size": 1, "minecraft:hand_equipped": true, "minecraft:cooldown": { "category": "gui_book", "duration": 0.5 } } }
-                   }, null, 2) + "\n\n";
-                   allCode += "RP/items/custom_gui_book.json:\n" + JSON.stringify({
-                      "format_version": "1.20.50", "minecraft:item": { "description": { "identifier": "custom:gui_book" }, "components": { "minecraft:icon": "gui_book" } }
-                   }, null, 2) + "\n\n";
+                   if (openedFrom === 'book') {
+                       allCode += "BP/items/custom_gui_book.json:\n" + JSON.stringify({
+                          "format_version": "1.20.50", "minecraft:item": { "description": { "identifier": "custom:gui_book", "menu_category": { "category": "equipment" } }, "components": { "minecraft:icon": "gui_book", "minecraft:display_name": { "value": "GUI Book" }, "minecraft:max_stack_size": 1, "minecraft:hand_equipped": true, "minecraft:cooldown": { "category": "gui_book", "duration": 0.5 } } }
+                       }, null, 2) + "\n\n";
+                       allCode += "RP/items/custom_gui_book.json:\n" + JSON.stringify({
+                          "format_version": "1.20.50", "minecraft:item": { "description": { "identifier": "custom:gui_book" }, "components": { "minecraft:icon": "gui_book" } }
+                       }, null, 2) + "\n\n";
+                   }
                    allCode += "BP/manifest.json:\n" + generateBPManifest() + "\n\n";
                    allCode += "RP/manifest.json:\n" + generateRPManifest() + "\n\n";
-                   allCode += "RP/texts/en_US.lang:\n" + `item.custom:gui_book.name=GUI Book\n\n` + `${[...guiElements, ...bookElements].filter(e=>e.type==='label').map(e => `label.${e.name.replace(/ /g, '_').toLowerCase()} = ${e.props.text}`).join('\n')}` + "\n\n";
+                   let langBookText = openedFrom === 'book' ? `item.custom:gui_book.name=GUI Book\n\n` : '';
+                   allCode += "RP/texts/en_US.lang:\n" + `${langBookText}${[...guiElements, ...bookElements].filter(e=>e.type==='label').map(e => `label.${e.name.replace(/ /g, '_').toLowerCase()} = ${e.props.text}`).join('\n')}` + "\n\n";
                    navigator.clipboard.writeText(allCode);
                    alert("Debug Logs Copied!");
                }} className="px-3 py-1 bg-yellow-600 text-white text-[11px] font-bold uppercase rounded hover:bg-yellow-500 transition-colors flex items-center gap-1">
@@ -1567,6 +1593,62 @@ export function showCustomUI(player) {
                </div>
             ))}
          </div>
+      ) : viewMode === 'triggers' ? (
+         <div className="flex-1 p-6 overflow-auto bg-[#1e1e1e] flex flex-col gap-6">
+            <div className="flex justify-between items-center bg-[#252526] py-3 px-4 rounded border border-[#333]">
+               <div>
+                  <h2 className="text-white font-bold text-lg">Custom Script Triggers</h2>
+                  <p className="text-[#aaa] text-xs">Since GUI is set to Hidden, choose events to open your GUI code.</p>
+               </div>
+               <button onClick={() => setCustomTriggers([...customTriggers, { id: generateUUID(), type: 'itemUse', config: {} }])} className="px-4 py-2 bg-[#007acc] text-white font-bold text-xs uppercase tracking-wider rounded hover:bg-[#005999] transition-colors">
+                  + Add Trigger
+               </button>
+            </div>
+
+            {customTriggers.map((trigger, i) => (
+               <div key={trigger.id} className="bg-[#252526] border border-[#333] rounded">
+                  <div className="bg-[#2a2d2e] p-3 border-b border-[#333] flex justify-between items-center rounded-t">
+                     <span className="text-white font-bold text-sm tracking-wide">Trigger #{i + 1}</span>
+                     <button onClick={() => setCustomTriggers(customTriggers.filter(t => t.id !== trigger.id))} className="text-red-400 font-bold text-xs uppercase hover:underline">Remove</button>
+                  </div>
+                  <div className="p-4 flex flex-col gap-4">
+                     <div className="flex gap-4 items-end">
+                        <div className="flex flex-col gap-1.5 flex-1">
+                           <label className="text-[10px] uppercase font-bold text-[#888] tracking-wider">Trigger Event</label>
+                           <select 
+                              value={trigger.type} 
+                              onChange={(e) => {
+                                 const newTriggers = [...customTriggers];
+                                 newTriggers[i].type = e.target.value as any;
+                                 setCustomTriggers(newTriggers);
+                              }}
+                              className="bg-[#111] border border-[#333] px-3 py-2 text-white text-sm outline-none rounded"
+                           >
+                              <option value="itemUse">Using an Item in Hand (Right Click)</option>
+                              <option value="blockBreak">Breaking a Specific Block</option>
+                              <option value="entityHit">Hitting a Specific Entity (Mob)</option>
+                              <option value="chatCommand">Typing a Chat Command</option>
+                           </select>
+                        </div>
+                        <div className="flex flex-col gap-1.5 flex-1">
+                           {trigger.type === 'itemUse' && (
+                              <><label className="text-[10px] uppercase font-bold text-[#888] tracking-wider">Item ID</label><input type="text" placeholder="minecraft:stick" value={trigger.config.itemId || ''} onChange={e => { const newTriggers = [...customTriggers]; newTriggers[i].config.itemId = e.target.value; setCustomTriggers(newTriggers); }} className="bg-[#111] border border-[#333] px-3 py-2 text-white text-sm outline-none rounded font-mono" /></>
+                           )}
+                           {trigger.type === 'blockBreak' && (
+                              <><label className="text-[10px] uppercase font-bold text-[#888] tracking-wider">Block ID</label><input type="text" placeholder="minecraft:dirt" value={trigger.config.blockId || ''} onChange={e => { const newTriggers = [...customTriggers]; newTriggers[i].config.blockId = e.target.value; setCustomTriggers(newTriggers); }} className="bg-[#111] border border-[#333] px-3 py-2 text-white text-sm outline-none rounded font-mono" /></>
+                           )}
+                           {trigger.type === 'entityHit' && (
+                              <><label className="text-[10px] uppercase font-bold text-[#888] tracking-wider">Entity ID</label><input type="text" placeholder="minecraft:cow" value={trigger.config.entityId || ''} onChange={e => { const newTriggers = [...customTriggers]; newTriggers[i].config.entityId = e.target.value; setCustomTriggers(newTriggers); }} className="bg-[#111] border border-[#333] px-3 py-2 text-white text-sm outline-none rounded font-mono" /></>
+                           )}
+                           {trigger.type === 'chatCommand' && (
+                              <><label className="text-[10px] uppercase font-bold text-[#888] tracking-wider">Chat Command</label><input type="text" placeholder="!showgui" value={trigger.config.command || ''} onChange={e => { const newTriggers = [...customTriggers]; newTriggers[i].config.command = e.target.value; setCustomTriggers(newTriggers); }} className="bg-[#111] border border-[#333] px-3 py-2 text-white text-sm outline-none rounded font-mono" /></>
+                           )}
+                        </div>
+                     </div>
+                  </div>
+               </div>
+            ))}
+         </div>
       ) : (
          /* Export / Code Mode */
          <div className="flex w-full h-full">
@@ -1698,7 +1780,8 @@ text = `{
                      if (selectedFile === 'RP/texts/en_US.lang') {
                         const allElements = [...guiElements, ...bookElements];
                         const labels = allElements.filter(e=>e.type==='label').map(e => `label.${e.name.replace(/ /g, '_').toLowerCase()} = ${e.props.text}`).join('\n');
-                        text = `item.custom:gui_book.name=GUI Book\n\n${labels}`;
+                        let langBookText = openedFrom === 'book' ? `item.custom:gui_book.name=GUI Book\n\n` : '';
+                        text = `${langBookText}${labels}`;
                      }
                      navigator.clipboard.writeText(text);
                      alert(`Copied ${selectedFile} to clipboard!`);
@@ -1806,7 +1889,7 @@ text = `{
   }
 }, null, 2)}
                      {selectedFile === 'RP/texts/en_US.lang' && (
-                        `item.custom:gui_book.name=GUI Book\n\n` +
+                        (openedFrom === 'book' ? `item.custom:gui_book.name=GUI Book\n\n` : '') +
                         `${[...guiElements, ...bookElements].filter(e=>e.type==='label').map(e => `label.${e.name.replace(/ /g, '_').toLowerCase()} = ${e.props.text}`).join('\n')}`
                      )}
                   </pre>
