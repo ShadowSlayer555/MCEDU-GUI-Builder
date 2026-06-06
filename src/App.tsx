@@ -49,7 +49,7 @@ type AppPhase = 'setup' | 'builder';
 
 interface CustomTrigger {
     id: string;
-    type: 'itemUse' | 'blockBreak' | 'entityHit' | 'chatCommand';
+    type: 'itemUse' | 'blockBreak' | 'entityHit' | 'chatCommand' | 'aiGenerated';
     config: any;
 }
 
@@ -530,6 +530,7 @@ export default function App() {
            if (t.type === 'blockBreak') return `world.afterEvents.playerBreakBlock.subscribe((event) => {\n  if (event.block.typeId === "${t.config.blockId || 'minecraft:dirt'}") {\n    system.runTimeout(() => { showCustomUI(event.player); }, 5);\n  }\n});`;
            if (t.type === 'entityHit') return `world.afterEvents.entityHitEntity.subscribe((event) => {\n  if (event.hitEntity.typeId === "${t.config.entityId || 'minecraft:cow'}" && event.damagingEntity.typeId === "minecraft:player") {\n    system.runTimeout(() => { showCustomUI(event.damagingEntity); }, 5);\n  }\n});`;
            if (t.type === 'chatCommand') return `world.beforeEvents.chatSend.subscribe((event) => {\n  if (event.message === "${t.config.command || '!showgui'}") {\n    event.cancel = true;\n    system.runTimeout(() => { showCustomUI(event.sender); }, 5);\n  }\n});`;
+           if (t.type === 'aiGenerated') return `// AI Generated code from prompt: "${t.config.prompt}"\n${t.config.code || '// Not generated yet'}`;
            return '';
         }).join('\n\n');
     }
@@ -1628,9 +1629,10 @@ export function showCustomUI(player) {
                               <option value="blockBreak">Breaking a Specific Block</option>
                               <option value="entityHit">Hitting a Specific Entity (Mob)</option>
                               <option value="chatCommand">Typing a Chat Command</option>
+                              <option value="aiGenerated">✨ AI Generative Trigger</option>
                            </select>
                         </div>
-                        <div className="flex flex-col gap-1.5 flex-1">
+                        <div className="flex flex-col gap-1.5 flex-1 w-full">
                            {trigger.type === 'itemUse' && (
                               <><label className="text-[10px] uppercase font-bold text-[#888] tracking-wider">Item ID</label><input type="text" placeholder="minecraft:stick" value={trigger.config.itemId || ''} onChange={e => { const newTriggers = [...customTriggers]; newTriggers[i].config.itemId = e.target.value; setCustomTriggers(newTriggers); }} className="bg-[#111] border border-[#333] px-3 py-2 text-white text-sm outline-none rounded font-mono" /></>
                            )}
@@ -1642,6 +1644,42 @@ export function showCustomUI(player) {
                            )}
                            {trigger.type === 'chatCommand' && (
                               <><label className="text-[10px] uppercase font-bold text-[#888] tracking-wider">Chat Command</label><input type="text" placeholder="!showgui" value={trigger.config.command || ''} onChange={e => { const newTriggers = [...customTriggers]; newTriggers[i].config.command = e.target.value; setCustomTriggers(newTriggers); }} className="bg-[#111] border border-[#333] px-3 py-2 text-white text-sm outline-none rounded font-mono" /></>
+                           )}
+                           {trigger.type === 'aiGenerated' && (
+                              <div className="flex flex-col gap-2">
+                                <label className="text-[10px] uppercase font-bold text-blue-400 tracking-wider">Describe the event in plain English</label>
+                                <textarea 
+                                  placeholder="When the player enters water, or when they eat an apple..."
+                                  value={trigger.config.prompt || ''}
+                                  onChange={e => { const newTriggers = [...customTriggers]; newTriggers[i].config.prompt = e.target.value; setCustomTriggers(newTriggers); }}
+                                  className="bg-[#111] border border-blue-900 px-3 py-2 text-white text-sm outline-none rounded min-h-[60px]"
+                                />
+                                <button className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-1.5 px-3 rounded text-xs transition-colors" disabled={trigger.config.isGenerating} onClick={async () => {
+                                   const newTriggers = [...customTriggers];
+                                   newTriggers[i].config.isGenerating = true;
+                                   setCustomTriggers(newTriggers);
+                                   try {
+                                     const res = await fetch('/api/generate-trigger', {
+                                       method: 'POST',
+                                       headers: { 'Content-Type': 'application/json' },
+                                       body: JSON.stringify({ prompt: trigger.config.prompt || '' })
+                                     });
+                                     const data = await res.json();
+                                     newTriggers[i].config.code = data.result;
+                                   } catch(e) {
+                                     alert('Failed to generate code.');
+                                   } finally {
+                                     newTriggers[i].config.isGenerating = false;
+                                     setCustomTriggers([...newTriggers]);
+                                   }
+                                }}>{trigger.config.isGenerating ? 'Generating...' : '✨ Generate Script'}</button>
+                                {trigger.config.code && (
+                                   <div className="mt-2">
+                                      <label className="text-[10px] uppercase font-bold text-[#888] tracking-wider">Generated Code</label>
+                                      <textarea readOnly value={trigger.config.code} className="w-full bg-[#1e1e1e] border border-[#333] px-2 py-1 text-green-400 text-[11px] font-mono rounded min-h-[100px] mt-1 custom-scrollbar"></textarea>
+                                   </div>
+                                )}
+                              </div>
                            )}
                         </div>
                      </div>

@@ -33,6 +33,30 @@ async function startServer() {
     }
   });
 
+  // API route to generate triggers
+  app.post("/api/generate-trigger", async (req, res) => {
+    try {
+      const { prompt } = req.body;
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        config: { systemInstruction: "You are an expert at Minecraft Bedrock Script API programming." },
+        contents: `Write a Minecraft Bedrock Script API code snippet that listens to an event or condition described by this prompt: "${prompt}". 
+        When the condition is met, it MUST run \`system.runTimeout(() => { showCustomUI(targetPlayer); }, 5);\`.
+        Replace \`targetPlayer\` with the appropriate player object from the event.
+        Return ONLY the raw JavaScript code block. Omit all markdown formatting like \`\`\`javascript. Return just the code.`,
+      });
+      
+      let text = response.text || "";
+      text = text.replace(/```javascript/gi, "").replace(/```js/gi, "").replace(/```/g, "").trim();
+      
+      res.json({ result: text });
+    } catch (e: any) {
+      console.error("AI Trigger Generation Error:", e);
+      res.status(500).json({ error: "Failed to generate trigger via AI." });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
