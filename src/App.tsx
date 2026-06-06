@@ -50,10 +50,14 @@ interface EditorElement {
   height: number;
   name: string;
   props: Record<string, string>;
-  variableActions?: { varId: string; amount: number; required?: boolean }[];
+  variableActions?: {
+    varId: string;
+    amount: number | string;
+    required?: boolean;
+  }[];
   variableActionsTarget?: {
     varId: string;
-    amount: number;
+    amount: number | string;
     required?: boolean;
   }[];
 }
@@ -76,6 +80,7 @@ const generateUUID = () => {
 };
 
 const MC_EVENTS = [
+  "custom_item",
   "playerBreakBlock",
   "playerPlaceBlock",
   "buttonPush",
@@ -101,6 +106,8 @@ interface VariableIncrement {
   event: string;
   amount: number;
   aiGeneratedCode?: string;
+  customItemId?: string;
+  destroyItemOnUse?: boolean;
 }
 
 interface Variable {
@@ -189,6 +196,69 @@ export default function App() {
     () => localStorage.getItem("GEMINI_API_KEY") || "",
   );
   const [showSettings, setShowSettings] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleSaveProject = () => {
+    const projectData = {
+      variables,
+      bpUuid1,
+      bpUuid2,
+      bpUuid3,
+      rpUuid1,
+      rpUuid2,
+      customTriggers,
+      openedFrom,
+      moddedItemName,
+      guiElements,
+      bookElements,
+      baseBPManifest,
+      baseRPManifest,
+    };
+    const jsonStr = JSON.stringify(projectData, null, 2);
+    const blob = new Blob([jsonStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "blockgui_project.json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleLoadProject = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = JSON.parse(e.target?.result as string);
+          if (data.variables) setVariables(data.variables);
+          if (data.bpUuid1) setBpUuid1(data.bpUuid1);
+          if (data.bpUuid2) setBpUuid2(data.bpUuid2);
+          if (data.bpUuid3) setBpUuid3(data.bpUuid3);
+          if (data.rpUuid1) setRpUuid1(data.rpUuid1);
+          if (data.rpUuid2) setRpUuid2(data.rpUuid2);
+          if (data.customTriggers) setCustomTriggers(data.customTriggers);
+          if (data.openedFrom) setOpenedFrom(data.openedFrom);
+          if (data.moddedItemName) setModdedItemName(data.moddedItemName);
+          if (data.guiElements) setGuiElements(data.guiElements);
+          if (data.bookElements) setBookElements(data.bookElements);
+          if (data.baseBPManifest !== undefined)
+            setBaseBPManifest(data.baseBPManifest);
+          if (data.baseRPManifest !== undefined)
+            setBaseRPManifest(data.baseRPManifest);
+          setAppPhase("builder");
+        } catch (err) {
+          alert("Failed to load project: Invalid file format.");
+        }
+      };
+      reader.readAsText(file);
+    }
+    if (event.target) {
+      event.target.value = "";
+    }
+  };
 
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -529,8 +599,26 @@ export default function App() {
     let formType = isModal ? "ModalFormData" : "ActionFormData";
     let formBuilder = `const form = new ${formType}();\n  form.title("${title}");`;
 
+    const replaceVars = (str: string) => {
+      let newStr = str;
+      variables.forEach((v) => {
+        newStr = newStr.replace(
+          new RegExp(`\\{${v.name}\\}`, "g"),
+          `\${getVar("${v.scope}", "${v.name}", player)}`,
+        );
+      });
+      return newStr;
+    };
+
+    const formatString = (val: string) => {
+      const replaced = replaceVars(val);
+      if (replaced !== val) return `\`${replaced}\``;
+      return `"${val}"`;
+    };
+
     // Dynamic body builder for bound variables
     const bodyLines = labels.slice(1).map((l) => {
+      // Legacy boundVariable check
       if (l.props.boundVariable) {
         let v = variables.find((v) => v.id === l.props.boundVariable);
         if (v) {
@@ -539,10 +627,10 @@ export default function App() {
           )
             ? ""
             : l.props.text + " ";
-          return `"${labelPrefix}" + getVar("${v.scope}", "${v.name}", player)`;
+          return `\`${labelPrefix}\${getVar("${v.scope}", "${v.name}", player)}\``;
         }
       }
-      return `"${l.props.text}"`;
+      return formatString(l.props.text);
     });
 
     if (!isModal && bodyLines.length > 0) {
@@ -552,18 +640,42 @@ export default function App() {
     let logicCode = "";
 
     const generateVarActionCode = (
-      btnActions?: { varId: string; amount: number; required?: boolean }[],
+      btnActions?: {
+        varId: string;
+        amount: number | string;
+        required?: boolean;
+      }[],
       targetName: string = "player",
     ) => {
       if (!btnActions || btnActions.length === 0) return "";
       let code = "";
+
+      const resolveAmount = (amountVal: number | string) => {
+        if (typeof amountVal === "number") return `(${amountVal})`;
+        if (typeof amountVal === "string") {
+          if (amountVal.startsWith("{") && amountVal.endsWith("}")) {
+            const name = amountVal.slice(1, -1);
+            const elIndex = inputs.findIndex(
+              (i) => (i.props.text || i.name) === name,
+            );
+            if (elIndex >= 0)
+              return `(parseFloat(formValues[${elIndex}]) || 0)`;
+
+            const v = variables.find((v) => v.name === name);
+            if (v) return `getVar("${v.scope}", "${v.name}", ${targetName})`;
+          }
+          return `(${parseFloat(amountVal) || 0})`;
+        }
+        return `(0)`;
+      };
+
       const requiredActions = btnActions.filter((a) => a.required);
       if (requiredActions.length > 0) {
         code += `let canExecute = true;\n      `;
         requiredActions.forEach((action, i) => {
           let v = variables.find((v) => v.id === action.varId);
-          if (v && v.min !== null && action.amount < 0) {
-            code += `let val${i} = getVar("${v.scope}", "${v.name}", ${targetName});\n      if ((val${i} + (${action.amount})) < ${v.min}) { canExecute = false; ${targetName}.sendMessage("§cNot enough ${v.name}!"); }\n      `;
+          if (v && v.min !== null) {
+            code += `let val${i} = getVar("${v.scope}", "${v.name}", ${targetName});\n      if ((val${i} + ${resolveAmount(action.amount)}) < ${v.min}) { canExecute = false; ${targetName}.sendMessage("§cNot enough ${v.name}!"); }\n      `;
           }
         });
         code += `if (!canExecute) return;\n      `;
@@ -573,7 +685,7 @@ export default function App() {
           let v = variables.find((v) => v.id === action.varId);
           if (!v) return "";
           return `let val_${v.name} = getVar("${v.scope}", "${v.name}", ${targetName});
-      setVar("${v.scope}", "${v.name}", ${targetName}, val_${v.name} + (${action.amount}), ${v.min !== null ? v.min : "null"}, ${v.max !== null ? v.max : "null"});
+      setVar("${v.scope}", "${v.name}", ${targetName}, val_${v.name} + ${resolveAmount(action.amount)}, ${v.min !== null ? v.min : "null"}, ${v.max !== null ? v.max : "null"});
       ${targetName}.sendMessage("§a${v.name} is now: " + getVar("${v.scope}", "${v.name}", ${targetName}));`;
         })
         .join("\n      ");
@@ -590,6 +702,7 @@ export default function App() {
       const formFields = inputs
         .map((input, index) => {
           const name = input.props.text || input.name;
+          
           if (input.type === "dropdown") {
             const options = (
               input.props.dropdownOptions || "Option 1, Option 2"
@@ -598,29 +711,32 @@ export default function App() {
               .map((o) => `"${o.trim()}"`)
               .join(", ");
             const defaultIdx = input.props.dropdownDefault || "0";
-            return `form.dropdown("${name}", [${options}], ${defaultIdx});`;
+            return `form.dropdown(${formatString(name)}, [${options}], ${defaultIdx});`;
           }
           if (input.type === "player_picker") {
-            return `form.dropdown("${name}", playerNames, 0);`;
+            return `form.dropdown(${formatString(name)}, playerNames, 0);`;
           }
           if (input.type === "slider") {
             const min = input.props.sliderMin || "0";
             const max = input.props.sliderMax || "100";
             const step = input.props.sliderStep || "1";
             const defaultVal = input.props.sliderDefault || "0";
-            return `form.slider("${name}", ${min}, ${max}, ${step}, ${defaultVal});`;
+            return `form.slider(${formatString(name)}, ${min}, ${max}, ${step}, ${defaultVal});`;
           }
           if (input.type === "textfield") {
             const placeholder =
               input.props.textFieldPlaceholder || "Placeholder";
             const defaultVal = input.props.textFieldDefault || "";
-            const args = `"${name}", "${placeholder}"${defaultVal ? `, "${defaultVal}"` : ""}`;
+            const formattedDefault = defaultVal
+              ? `, ${formatString(defaultVal)}`
+              : "";
+            const args = `${formatString(name)}, ${formatString(placeholder)}${formattedDefault}`;
             return `form.textField(${args});`;
           }
           if (input.type === "toggle") {
             const defaultVal =
               input.props.toggleDefault === "true" ? "true" : "false";
-            return `form.toggle("${name}", ${defaultVal});`;
+            return `form.toggle(${formatString(name)}, ${defaultVal});`;
           }
           return "";
         })
@@ -724,6 +840,19 @@ export default function App() {
                 inc.aiGeneratedCode ||
                 `// TODO: Define custom AI logic for "${v.name}" here!\n// world.afterEvents.entityHurt.subscribe((event) => { /* logic */ });`
               );
+            } else if (resolvedEventName === "custom_item") {
+              return `try {
+  world.afterEvents.itemUse.subscribe((event) => {
+    if (event.itemStack.typeId === "${inc.customItemId || "minecraft:stick"}") {
+      let p = event.source;
+      if (${v.scope === "player" ? `p && p.typeId === 'minecraft:player'` : `true`}) {
+        let val = getVar("${v.scope}", "${v.name}", p);
+        setVar("${v.scope}", "${v.name}", p, val + (${inc.amount}), ${v.min !== null ? v.min : "null"}, ${v.max !== null ? v.max : "null"});
+${inc.destroyItemOnUse ? `        // Destroy item on use\n        try {\n          const inv = p.getComponent('inventory').container;\n          let itemIndex = -1;\n          for(let i=0; i<inv.size; i++) {\n             const curItem = inv.getItem(i);\n             if (curItem && curItem.typeId === "${inc.customItemId || "minecraft:stick"}") { itemIndex = i; break; }\n          }\n          if (itemIndex > -1) { inv.setItem(itemIndex); /* setting undefined removes it */ }\n        } catch(e) {}` : ""}
+      }
+    }
+  });
+} catch(err) {}`;
             } else {
               return `try {
   world.afterEvents.${resolvedEventName}.subscribe((event) => {
@@ -1005,6 +1134,27 @@ export function showCustomUI(player) {
           )}
         </div>
         <div className="flex items-center gap-3">
+          <input
+            type="file"
+            accept=".json"
+            style={{ display: "none" }}
+            onChange={handleLoadProject}
+            ref={fileInputRef}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="px-3 py-1 bg-[#444] text-white text-[11px] font-bold uppercase rounded hover:bg-[#555] transition-colors flex items-center gap-1"
+          >
+            <FolderOpen className="w-3 h-3" /> Load Project
+          </button>
+          {appPhase === "builder" && (
+            <button
+              onClick={handleSaveProject}
+              className="px-3 py-1 bg-[#4CAF50] text-white text-[11px] font-bold uppercase rounded hover:bg-[#45a049] transition-colors flex items-center gap-1"
+            >
+              <Download className="w-3 h-3" /> Save Project
+            </button>
+          )}
           <button
             onClick={() => setShowSettings(true)}
             className="p-1.5 text-[#aaa] hover:text-white hover:bg-[#333] rounded transition-colors"
@@ -1921,16 +2071,20 @@ export function showCustomUI(player) {
                                         +
                                       </span>
                                       <input
-                                        type="number"
+                                        type="text"
                                         value={act.amount}
                                         onChange={(e) => {
                                           const acts = [
                                             ...(selectedElement.variableActions ||
                                               []),
                                           ];
-                                          acts[idx].amount = parseFloat(
-                                            e.target.value,
-                                          );
+                                          const val = e.target.value;
+                                          // if it matches a number, keep it a number format, else string
+                                          acts[idx].amount =
+                                            isNaN(Number(val)) ||
+                                            val.trim() === ""
+                                              ? val
+                                              : parseFloat(val);
                                           setElements((prev) =>
                                             prev.map((el) =>
                                               el.id === selectedId
@@ -2073,16 +2227,19 @@ export function showCustomUI(player) {
                                             +
                                           </span>
                                           <input
-                                            type="number"
+                                            type="text"
                                             value={act.amount}
                                             onChange={(e) => {
                                               const acts = [
                                                 ...(selectedElement.variableActionsTarget ||
                                                   []),
                                               ];
-                                              acts[idx].amount = parseFloat(
-                                                e.target.value,
-                                              );
+                                              const val = e.target.value;
+                                              acts[idx].amount =
+                                                isNaN(Number(val)) ||
+                                                val.trim() === ""
+                                                  ? val
+                                                  : parseFloat(val);
                                               setElements((prev) =>
                                                 prev.map((el) =>
                                                   el.id === selectedId
@@ -2627,48 +2784,81 @@ export function showCustomUI(player) {
                         {(v.increments || []).map((inc, incIdx) => (
                           <div
                             key={incIdx}
-                            className="flex gap-2 items-center bg-[#181818] p-2 rounded border border-[#2a2a2a]"
+                            className="flex flex-col gap-2 bg-[#181818] p-2 rounded border border-[#2a2a2a]"
                           >
-                            <select
-                              value={inc.event}
-                              onChange={(e) => {
-                                const newVars = [...variables];
-                                newVars[i].increments[incIdx].event =
-                                  e.target.value;
-                                setVariables(newVars);
-                              }}
-                              className="bg-[#111] border border-[#333] text-xs p-1.5 rounded text-white outline-none focus:border-[#007acc] flex-1"
-                            >
-                              {MC_EVENTS.map((evt) => (
-                                <option key={evt} value={evt}>
-                                  {evt}
-                                </option>
-                              ))}
-                            </select>
-                            <span className="text-white text-xs font-mono font-bold">
-                              BY
-                            </span>
-                            <input
-                              type="number"
-                              value={inc.amount}
-                              onChange={(e) => {
-                                const newVars = [...variables];
-                                newVars[i].increments[incIdx].amount =
-                                  parseFloat(e.target.value);
-                                setVariables(newVars);
-                              }}
-                              className="bg-[#111] border border-[#333] p-1 text-white font-mono text-sm rounded w-16"
-                            />
-                            <button
-                              onClick={() => {
-                                const newVars = [...variables];
-                                newVars[i].increments.splice(incIdx, 1);
-                                setVariables(newVars);
-                              }}
-                              className="text-red-400 font-bold ml-2 text-xs"
-                            >
-                              X
-                            </button>
+                            <div className="flex gap-2 items-center">
+                              <select
+                                value={inc.event}
+                                onChange={(e) => {
+                                  const newVars = [...variables];
+                                  newVars[i].increments[incIdx].event =
+                                    e.target.value;
+                                  setVariables(newVars);
+                                }}
+                                className="bg-[#111] border border-[#333] text-xs p-1.5 rounded text-white outline-none focus:border-[#007acc] flex-1"
+                              >
+                                {MC_EVENTS.map((evt) => (
+                                  <option key={evt} value={evt}>
+                                    {evt}
+                                  </option>
+                                ))}
+                              </select>
+                              <span className="text-white text-xs font-mono font-bold">
+                                BY
+                              </span>
+                              <input
+                                type="number"
+                                value={inc.amount}
+                                onChange={(e) => {
+                                  const newVars = [...variables];
+                                  newVars[i].increments[incIdx].amount =
+                                    parseFloat(e.target.value);
+                                  setVariables(newVars);
+                                }}
+                                className="bg-[#111] border border-[#333] p-1 text-white font-mono text-sm rounded w-16"
+                              />
+                              <button
+                                onClick={() => {
+                                  const newVars = [...variables];
+                                  newVars[i].increments.splice(incIdx, 1);
+                                  setVariables(newVars);
+                                }}
+                                className="text-red-400 font-bold ml-2 text-xs"
+                              >
+                                X
+                              </button>
+                            </div>
+                            {inc.event === "custom_item" && (
+                              <div className="flex gap-2 items-center mt-1">
+                                <input
+                                  type="text"
+                                  placeholder="minecraft:stick"
+                                  value={inc.customItemId || ""}
+                                  onChange={(e) => {
+                                    const newVars = [...variables];
+                                    newVars[i].increments[incIdx].customItemId =
+                                      e.target.value;
+                                    setVariables(newVars);
+                                  }}
+                                  className="bg-[#111] border border-[#333] p-1 text-white font-mono text-xs rounded w-32 outline-none focus:border-[#007acc]"
+                                />
+                                <label className="flex items-center gap-1.5 text-xs text-[#aaa]">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!inc.destroyItemOnUse}
+                                    onChange={(e) => {
+                                      const newVars = [...variables];
+                                      newVars[i].increments[
+                                        incIdx
+                                      ].destroyItemOnUse = e.target.checked;
+                                      setVariables(newVars);
+                                    }}
+                                    className="accent-[#3498db]"
+                                  />
+                                  Destroy Item on Use
+                                </label>
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -3144,7 +3334,7 @@ export function showCustomUI(player) {
               </div>
 
               {guiElements.some((e) =>
-                ["dropdown", "slider", "textfield", "toggle"].includes(e.type),
+                ["dropdown", "slider", "textfield", "toggle", "player_picker"].includes(e.type),
               ) &&
                 guiElements.some((e) => e.type === "label") && (
                   <div className="bg-[#3a1a1a] border-b border-[#dd3b3b] text-[#ffa3a3] p-3 text-xs leading-relaxed">
@@ -3160,6 +3350,12 @@ export function showCustomUI(player) {
                     natively, your labels will be hidden in the exported Script
                     API code. Only the very first label will be preserved as the
                     Form Title.
+                    <br />
+                    <br />
+                    <b>Want to show text/variables?</b> If your UI has no inputs (only buttons), it is exported as <code>ActionFormData</code> which fully supports body text! Otherwise, you can type{" "}
+                    <code>{"{YourVar}"}</code> directly in the titles or
+                    placeholders of Sliders, Dropdowns, and TextFields, and it
+                    will automatically replace it with the live variable value!
                   </div>
                 )}
 
