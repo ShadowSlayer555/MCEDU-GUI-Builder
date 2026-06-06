@@ -187,7 +187,8 @@ export default function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-           system_instruction: { parts: [{ text: "You are an expert at Minecraft Bedrock script API development." }] },
+           systemInstruction: { parts: [{ text: "You are an expert at Minecraft Bedrock script API development." }] },
+           generationConfig: { responseMimeType: "application/json" },
            contents: [{ role: "user", parts: [{ text: `You are assisting a developer working on a custom Bedrock add-on. They provided this request for a new stat or variable to track using the Script API: "${aiVarPrompt}". Generate a JSON object with this exact structure: { "name": "VariableName", "scope": "player" | "global", "increments": [ { "event": "complex_script", "amount": 1, "customCode": "// Define custom AI logic for this variable here!\\n// world.afterEvents.entityDie.subscribe((event) => { /* logic involving player */ });" } ] } Return ONLY valid JSON. Omit all markdown formatting. The variable name must be alphanumeric and under 16 characters.` }] }]
         })
       });
@@ -234,7 +235,8 @@ export default function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-           system_instruction: { parts: [{ text: "You are an expert at Minecraft Bedrock UI JSON programming." }] },
+           systemInstruction: { parts: [{ text: "You are an expert at Minecraft Bedrock UI JSON programming." }] },
+           generationConfig: { responseMimeType: "application/json" },
            contents: [{ role: "user", parts: [{ text: `You are assisting a developer working on a custom GUI in Minecraft Bedrock edition. 
         They selected a "${el?.type}" UI element and provided this instruction: "${aiPrompt}".
         Generate the raw JSON object snippet that implements this logic for Bedrock (e.g., button_mappings for a button, or bindings for a label).
