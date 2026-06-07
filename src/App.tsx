@@ -28,6 +28,8 @@ import {
   Users,
   Terminal,
   GripVertical,
+  Plus,
+  Trash2,
 } from "lucide-react";
 
 type ElementType =
@@ -64,6 +66,13 @@ interface EditorElement {
 
 type ViewMode = "designer" | "variables" | "export" | "triggers";
 type AppPhase = "setup" | "builder";
+
+interface GuiSlide {
+  id: string;
+  name: string;
+  slideType: "interactive" | "text_display";
+  elements: EditorElement[];
+}
 
 interface CustomTrigger {
   id: string;
@@ -126,6 +135,7 @@ export default function App() {
   const [bpUuid3, setBpUuid3] = useState(generateUUID);
   const [rpUuid1, setRpUuid1] = useState(generateUUID);
   const [rpUuid2, setRpUuid2] = useState(generateUUID);
+  const [projectName, setProjectName] = useState("untitled_project");
   const [appPhase, setAppPhase] = useState<AppPhase>("setup");
   const [customTriggers, setCustomTriggers] = useState<CustomTrigger[]>([]);
   const [inGameLogs, setInGameLogs] = useState(false);
@@ -136,8 +146,32 @@ export default function App() {
   const [baseBPManifest, setBaseBPManifest] = useState("");
   const [baseRPManifest, setBaseRPManifest] = useState("");
 
-  const [guiElements, setGuiElements] = useState<EditorElement[]>([]);
+  const [guiSlides, setGuiSlides] = useState<GuiSlide[]>([
+    {
+      id: "main",
+      name: "Main GUI",
+      slideType: "interactive",
+      elements: [],
+    },
+  ]);
+  const [activeSlideId, setActiveSlideId] = useState<string>("main");
+  const [showSlideModal, setShowSlideModal] = useState(false);
+
   const [bookElements, setBookElements] = useState<EditorElement[]>([]);
+
+  const guiElements = guiSlides.find((s) => s.id === activeSlideId)?.elements || [];
+  const setGuiElements = (updater: React.SetStateAction<EditorElement[]>) => {
+    setGuiSlides((prev) =>
+      prev.map((s) => {
+        if (s.id === activeSlideId) {
+          const nextElements =
+            typeof updater === "function" ? updater(s.elements) : updater;
+          return { ...s, elements: nextElements };
+        }
+        return s;
+      }),
+    );
+  };
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -200,6 +234,7 @@ export default function App() {
 
   const handleSaveProject = () => {
     const projectData = {
+      projectName,
       variables,
       bpUuid1,
       bpUuid2,
@@ -209,7 +244,7 @@ export default function App() {
       customTriggers,
       openedFrom,
       moddedItemName,
-      guiElements,
+      guiSlides,
       bookElements,
       baseBPManifest,
       baseRPManifest,
@@ -219,7 +254,7 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "blockgui_project.json";
+    a.download = `${projectName.replace(/[^a-z0-9_-]/gi, '_')}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -233,6 +268,7 @@ export default function App() {
       reader.onload = (e) => {
         try {
           const data = JSON.parse(e.target?.result as string);
+          if (data.projectName) setProjectName(data.projectName);
           if (data.variables) setVariables(data.variables);
           if (data.bpUuid1) setBpUuid1(data.bpUuid1);
           if (data.bpUuid2) setBpUuid2(data.bpUuid2);
@@ -242,7 +278,26 @@ export default function App() {
           if (data.customTriggers) setCustomTriggers(data.customTriggers);
           if (data.openedFrom) setOpenedFrom(data.openedFrom);
           if (data.moddedItemName) setModdedItemName(data.moddedItemName);
-          if (data.guiElements) setGuiElements(data.guiElements);
+          
+          if (data.guiSlides) {
+            setGuiSlides(data.guiSlides);
+            setActiveSlideId(data.guiSlides[0]?.id || "main");
+          } else if (data.guiElements) {
+            const hasInputs = data.guiElements.some((el: any) =>
+              ["dropdown", "slider", "textfield", "toggle", "player_picker"].includes(el.type),
+            );
+            const numLabels = data.guiElements.filter((el: any) => el.type === "label").length;
+            setGuiSlides([
+              {
+                id: "main",
+                name: "Main GUI",
+                slideType: !hasInputs && numLabels > 1 ? "text_display" : "interactive",
+                elements: data.guiElements,
+              },
+            ]);
+            setActiveSlideId("main");
+          }
+          
           if (data.bookElements) setBookElements(data.bookElements);
           if (data.baseBPManifest !== undefined)
             setBaseBPManifest(data.baseBPManifest);
@@ -262,39 +317,47 @@ export default function App() {
 
   const canvasRef = useRef<HTMLDivElement>(null);
 
-  const handleStartBuilder = () => {
-    setGuiElements([
+  const handleStartBuilder = (initialType: "interactive" | "text_display" = "interactive") => {
+    setGuiSlides([
       {
-        id: Math.random().toString(36).substr(2, 9),
-        type: "panel",
-        x: 200,
-        y: 150,
-        width: 400,
-        height: 220,
-        name: "Main Background",
-        props: { texture: "textures/gui/new_bg.png" },
-      },
-      {
-        id: Math.random().toString(36).substr(2, 9),
-        type: "label",
-        x: 200,
-        y: 100,
-        width: 400,
-        height: 20,
-        name: "Title",
-        props: { text: "My Custom UI" },
-      },
-      {
-        id: Math.random().toString(36).substr(2, 9),
-        type: "button",
-        x: 200,
-        y: 250,
-        width: 200,
-        height: 30,
-        name: "Close Button",
-        props: { text: "Close", action: "close_gui" },
-      },
+        id: "main",
+        name: "Main GUI",
+        slideType: initialType,
+        elements: [
+          {
+            id: Math.random().toString(36).substr(2, 9),
+            type: "panel",
+            x: 200,
+            y: 150,
+            width: 400,
+            height: 220,
+            name: "Main Background",
+            props: { texture: "textures/gui/new_bg.png" },
+          },
+          {
+            id: Math.random().toString(36).substr(2, 9),
+            type: "label",
+            x: 200,
+            y: 100,
+            width: 400,
+            height: 20,
+            name: "Title",
+            props: { text: "My Custom UI" },
+          },
+          {
+            id: Math.random().toString(36).substr(2, 9),
+            type: "button",
+            x: 200,
+            y: 250,
+            width: 200,
+            height: 30,
+            name: "Close Button",
+            props: { text: "Close", action: "close_gui" },
+          },
+        ]
+      }
     ]);
+    setActiveSlideId("main");
     setSelectedFile("BP/scripts/main.js");
     setAppPhase("builder");
   };
@@ -495,7 +558,7 @@ export default function App() {
           generated_with: { bridge: ["2.7.54"] },
         },
         header: {
-          name: "EDU-GUI-MOD BP",
+          name: projectName,
           description: "Script API UI Behavior Pack",
           min_engine_version: [1, 21, 120],
           uuid: bpUuid1,
@@ -555,7 +618,7 @@ export default function App() {
           generated_with: { bridge: ["2.7.54"] },
         },
         header: {
-          name: "EDU-GUI-MOD RP",
+          name: projectName,
           description: "Custom UI Resource Pack",
           min_engine_version: [1, 21, 120],
           uuid: rpUuid1,
@@ -581,242 +644,269 @@ export default function App() {
   };
 
   const generateScriptAPI = () => {
-    const isModal = guiElements.some((e) =>
-      ["dropdown", "slider", "textfield", "toggle", "player_picker"].includes(
-        e.type,
-      ),
-    );
-    const buttons = guiElements.filter((e) => e.type === "button");
-    const labels = guiElements.filter((e) => e.type === "label");
-    const inputs = guiElements.filter((e) =>
-      ["dropdown", "slider", "textfield", "toggle", "player_picker"].includes(
-        e.type,
-      ),
-    );
+    let guiFunctionsCode = "";
 
-    const title = labels[0]?.props.text || "Custom UI";
-
-    let formType = isModal ? "ModalFormData" : "ActionFormData";
-    let formBuilder = `const form = new ${formType}();\n  form.title("${title}");`;
-
-    const replaceVars = (str: string) => {
-      let newStr = str;
-      variables.forEach((v) => {
-        newStr = newStr.replace(
-          new RegExp(`\\{${v.name}\\}`, "g"),
-          `\${getVar("${v.scope}", "${v.name}", player)}`,
-        );
-      });
-      return newStr;
-    };
-
-    const formatString = (val: string) => {
-      const replaced = replaceVars(val);
-      if (replaced !== val) return `\`${replaced}\``;
-      return `"${val}"`;
-    };
-
-    // Dynamic body builder for bound variables
-    const bodyLines = labels.slice(1).map((l) => {
-      // Legacy boundVariable check
-      if (l.props.boundVariable) {
-        let v = variables.find((v) => v.id === l.props.boundVariable);
-        if (v) {
-          const labelPrefix = ["0", "value", "var", "0.0", "1"].includes(
-            l.props.text.trim(),
-          )
-            ? ""
-            : l.props.text + " ";
-          return `\`${labelPrefix}\${getVar("${v.scope}", "${v.name}", player)}\``;
-        }
-      }
-      return formatString(l.props.text);
-    });
-
-    if (!isModal && bodyLines.length > 0) {
-      formBuilder += `\n  form.body(${bodyLines.join(' + "\\n" + ')});`;
-    }
-
-    let logicCode = "";
-
-    const generateVarActionCode = (
-      btnActions?: {
-        varId: string;
-        amount: number | string;
-        required?: boolean;
-      }[],
-      targetName: string = "player",
-    ) => {
-      if (!btnActions || btnActions.length === 0) return "";
-      let code = "";
-
-      const resolveAmount = (amountVal: number | string) => {
-        if (typeof amountVal === "number") return `(${amountVal})`;
-        if (typeof amountVal === "string") {
-          if (amountVal.startsWith("{") && amountVal.endsWith("}")) {
-            const name = amountVal.slice(1, -1);
-            const elIndex = inputs.findIndex(
-              (i) => (i.props.text || i.name) === name,
-            );
-            if (elIndex >= 0)
-              return `(parseFloat(formValues[${elIndex}]) || 0)`;
-
-            const v = variables.find((v) => v.name === name);
-            if (v) return `getVar("${v.scope}", "${v.name}", ${targetName})`;
-          }
-          return `(${parseFloat(amountVal) || 0})`;
-        }
-        return `(0)`;
-      };
-
-      const requiredActions = btnActions.filter((a) => a.required);
-      if (requiredActions.length > 0) {
-        code += `let canExecute = true;\n      `;
-        requiredActions.forEach((action, i) => {
-          let v = variables.find((v) => v.id === action.varId);
-          if (v && v.min !== null) {
-            code += `let val${i} = getVar("${v.scope}", "${v.name}", ${targetName});\n      if ((val${i} + ${resolveAmount(action.amount)}) < ${v.min}) { canExecute = false; ${targetName}.sendMessage("§cNot enough ${v.name}!"); }\n      `;
-          }
-        });
-        code += `if (!canExecute) return;\n      `;
-      }
-      code += btnActions
-        .map((action) => {
-          let v = variables.find((v) => v.id === action.varId);
-          if (!v) return "";
-          return `let val_${v.name} = getVar("${v.scope}", "${v.name}", ${targetName});
-      setVar("${v.scope}", "${v.name}", ${targetName}, val_${v.name} + ${resolveAmount(action.amount)}, ${v.min !== null ? v.min : "null"}, ${v.max !== null ? v.max : "null"});
-      ${targetName}.sendMessage("§a${v.name} is now: " + getVar("${v.scope}", "${v.name}", ${targetName}));`;
-        })
-        .join("\n      ");
-      return code;
-    };
-
-    if (isModal) {
-      if (inputs.some((i) => i.type === "player_picker")) {
-        formBuilder =
-          `const allPlayers = world.getAllPlayers();\n  const playerNames = allPlayers.length > 0 ? allPlayers.map(p => p.name) : ["No players online"];\n  ` +
-          formBuilder;
-      }
-
-      const formFields = inputs
-        .map((input, index) => {
-          const name = input.props.text || input.name;
-          
-          if (input.type === "dropdown") {
-            const options = (
-              input.props.dropdownOptions || "Option 1, Option 2"
-            )
-              .split(",")
-              .map((o) => `"${o.trim()}"`)
-              .join(", ");
-            const defaultIdx = input.props.dropdownDefault || "0";
-            return `form.dropdown(${formatString(name)}, [${options}], ${defaultIdx});`;
-          }
-          if (input.type === "player_picker") {
-            return `form.dropdown(${formatString(name)}, playerNames, 0);`;
-          }
-          if (input.type === "slider") {
-            const min = input.props.sliderMin || "0";
-            const max = input.props.sliderMax || "100";
-            const step = input.props.sliderStep || "1";
-            const defaultVal = input.props.sliderDefault || "0";
-            return `form.slider(${formatString(name)}, ${min}, ${max}, ${step}, ${defaultVal});`;
-          }
-          if (input.type === "textfield") {
-            const placeholder =
-              input.props.textFieldPlaceholder || "Placeholder";
-            const defaultVal = input.props.textFieldDefault || "";
-            const formattedDefault = defaultVal
-              ? `, ${formatString(defaultVal)}`
-              : "";
-            const args = `${formatString(name)}, ${formatString(placeholder)}${formattedDefault}`;
-            return `form.textField(${args});`;
-          }
-          if (input.type === "toggle") {
-            const defaultVal =
-              input.props.toggleDefault === "true" ? "true" : "false";
-            return `form.toggle(${formatString(name)}, ${defaultVal});`;
-          }
-          return "";
-        })
-        .join("\n  ");
-
-      const submitBtn = buttons[0];
-      const submitText = submitBtn
-        ? submitBtn.props.text || submitBtn.name
-        : "Submit";
-
-      formBuilder += `\n  ${formFields}`;
-      formBuilder += `\n  form.submitButton("${submitText}");`;
-
-      logicCode = `const formValues = response.formValues;\n    player.sendMessage("Form submitted!");`;
-
-      inputs.forEach((input, index) => {
-        if (
-          input.type === "textfield" &&
-          input.props.correctAnswer &&
-          input.variableActions?.length
-        ) {
-          logicCode += `\n    if (formValues[${index}] === "${input.props.correctAnswer}") {`;
-          logicCode += `\n        player.sendMessage("§aCorrect Answer!");`;
-          logicCode += `\n        ${generateVarActionCode(input.variableActions)}`;
-          logicCode += `\n    } else { player.sendMessage("§cIncorrect Answer."); }`;
-        }
-        if (
-          input.type === "player_picker" &&
-          (input.variableActions?.length || input.variableActionsTarget?.length)
-        ) {
-          logicCode += `\n    const targetPlayerIndex_${index} = formValues[${index}];\n    const targetPlayer_${index} = allPlayers[targetPlayerIndex_${index}];`;
-          logicCode += `\n    if (targetPlayer_${index}) {`;
-          if (input.variableActions?.length) {
-            logicCode += `\n        ${generateVarActionCode(input.variableActions, "player")}`;
-          }
-          if (input.variableActionsTarget?.length) {
-            logicCode += `\n        ${generateVarActionCode(input.variableActionsTarget, `targetPlayer_${index}`)}`;
-          }
-          logicCode += `\n    }`;
-        }
-      });
-
-      if (submitBtn) {
-        logicCode += `\n    ${generateVarActionCode(submitBtn.variableActions)}`;
-      }
-    } else {
-      const actionUIElements = guiElements.filter(
-        (e) => e.type === "button" || e.type === "image",
+    guiSlides.forEach((slide) => {
+      const isModal = slide.elements.some((e) =>
+        ["dropdown", "slider", "textfield", "toggle", "player_picker"].includes(
+          e.type,
+        ),
+      );
+      const buttons = slide.elements.filter((e) => e.type === "button");
+      const labels = slide.elements.filter((e) => e.type === "label");
+      const inputs = slide.elements.filter((e) =>
+        ["dropdown", "slider", "textfield", "toggle", "player_picker"].includes(
+          e.type,
+        ),
       );
 
-      const btnCode = actionUIElements
-        .map((el) => {
-          if (el.type === "image") {
-            let iconStr = el.props.texture ? `, "${el.props.texture}"` : "";
-            return `.button(""${iconStr})`;
-          } else {
-            let text = el.props.text || el.name;
-            let iconStr = el.props.texture ? `, "${el.props.texture}"` : "";
-            return `.button("${text}"${iconStr})`;
-          }
-        })
-        .join("\n    ");
+      const title = labels[0]?.props.text || "Custom UI";
 
-      if (actionUIElements.length > 0) {
-        formBuilder += `\n  form\n    ${btnCode};`;
+      let formType = isModal ? "ModalFormData" : "ActionFormData";
+      let formBuilder = `const form = new ${formType}();\n  form.title("${title}");`;
+
+      const replaceVars = (str: string) => {
+        let newStr = str;
+        variables.forEach((v) => {
+          newStr = newStr.replace(
+            new RegExp(`\\{${v.name}\\}`, "g"),
+            `\${getVar("${v.scope}", "${v.name}", player)}`,
+          );
+        });
+        return newStr;
+      };
+
+      const formatString = (val: string) => {
+        const replaced = replaceVars(val);
+        if (replaced !== val) return `\`${replaced}\``;
+        return `"${val}"`;
+      };
+
+      // Dynamic body builder for bound variables
+      const bodyLines = labels.slice(1).map((l) => {
+        // Legacy boundVariable check
+        if (l.props.boundVariable) {
+          let v = variables.find((v) => v.id === l.props.boundVariable);
+          if (v) {
+            const labelPrefix = ["0", "value", "var", "0.0", "1"].includes(
+              l.props.text.trim(),
+            )
+              ? ""
+              : l.props.text + " ";
+            return `\`${labelPrefix}\${getVar("${v.scope}", "${v.name}", player)}\``;
+          }
+        }
+        return formatString(l.props.text);
+      });
+
+      if (!isModal && bodyLines.length > 0) {
+        formBuilder += `\n  form.body(${bodyLines.join(' + "\\n" + ')});`;
       }
 
-      logicCode = actionUIElements
-        .map((el, i) => {
-          if (el.type === "image") return "";
-          let actionCode = generateVarActionCode(el.variableActions);
-          return `if (response.selection === ${i}) {
-      // Player clicked ${el.props.text || el.name}
-      player.sendMessage("You clicked ${el.props.text || el.name}!");
-      ${actionCode}
-    }`;
-        })
-        .filter(Boolean)
-        .join(" else ");
-    }
+      let logicCode = "";
+
+      const generateVarActionCode = (
+        btnActions?: {
+          varId: string;
+          amount: number | string;
+          required?: boolean;
+        }[],
+        targetName: string = "player",
+      ) => {
+        if (!btnActions || btnActions.length === 0) return "";
+        let code = "";
+
+        const resolveAmount = (amountVal: number | string) => {
+          if (typeof amountVal === "number") return `(${amountVal})`;
+          if (typeof amountVal === "string") {
+            if (amountVal.startsWith("{") && amountVal.endsWith("}")) {
+              const name = amountVal.slice(1, -1);
+              const elIndex = inputs.findIndex(
+                (i) => (i.props.text || i.name) === name,
+              );
+              if (elIndex >= 0)
+                return `(parseFloat(formValues[${elIndex}]) || 0)`;
+
+              const v = variables.find((v) => v.name === name);
+              if (v) return `getVar("${v.scope}", "${v.name}", ${targetName})`;
+            }
+            return `(${parseFloat(amountVal) || 0})`;
+          }
+          return `(0)`;
+        };
+
+        const requiredActions = btnActions.filter((a) => a.required && !a.varId.startsWith("_NAV_"));
+        if (requiredActions.length > 0) {
+          code += `let canExecute = true;\n      `;
+          requiredActions.forEach((action, i) => {
+            let v = variables.find((v) => v.id === action.varId);
+            if (v && v.min !== null) {
+              code += `let val${i} = getVar("${v.scope}", "${v.name}", ${targetName});\n      if ((val${i} + ${resolveAmount(action.amount)}) < ${v.min}) { canExecute = false; ${targetName}.sendMessage("§cNot enough ${v.name}!"); }\n      `;
+            }
+          });
+          code += `if (!canExecute) return;\n      `;
+        }
+        code += btnActions
+          .map((action) => {
+            if (action.varId.startsWith("_NAV_")) {
+              const targetSlideId = action.varId.replace("_NAV_", "");
+              return `system.runTimeout(() => { showCustomUI_${targetSlideId}(player); }, 1);`;
+            }
+            let v = variables.find((v) => v.id === action.varId);
+            if (!v) return "";
+            return `let val_${v.name} = getVar("${v.scope}", "${v.name}", ${targetName});
+        setVar("${v.scope}", "${v.name}", ${targetName}, val_${v.name} + ${resolveAmount(action.amount)}, ${v.min !== null ? v.min : "null"}, ${v.max !== null ? v.max : "null"});
+        ${targetName}.sendMessage("§a${v.name} is now: " + getVar("${v.scope}", "${v.name}", ${targetName}));`;
+          })
+          .join("\n      ");
+        return code;
+      };
+
+      if (isModal) {
+        if (inputs.some((i) => i.type === "player_picker")) {
+          formBuilder =
+            `const allPlayers = world.getAllPlayers();\n  const playerNames = allPlayers.length > 0 ? allPlayers.map(p => p.name) : ["No players online"];\n  ` +
+            formBuilder;
+        }
+
+        const formFields = inputs
+          .map((input, index) => {
+            const name = input.props.text || input.name;
+            
+            if (input.type === "dropdown") {
+              const options = (
+                input.props.dropdownOptions || "Option 1, Option 2"
+              )
+                .split(",")
+                .map((o) => `"${o.trim()}"`)
+                .join(", ");
+              const defaultIdx = input.props.dropdownDefault || "0";
+              return `form.dropdown(${formatString(name)}, [${options}], ${defaultIdx});`;
+            }
+            if (input.type === "player_picker") {
+              return `form.dropdown(${formatString(name)}, playerNames, 0);`;
+            }
+            if (input.type === "slider") {
+              const min = input.props.sliderMin || "0";
+              const max = input.props.sliderMax || "100";
+              const step = input.props.sliderStep || "1";
+              const defaultVal = input.props.sliderDefault || "0";
+              return `form.slider(${formatString(name)}, ${min}, ${max}, ${step}, ${defaultVal});`;
+            }
+            if (input.type === "textfield") {
+              const placeholder =
+                input.props.textFieldPlaceholder || "Placeholder";
+              const defaultVal = input.props.textFieldDefault || "";
+              const formattedDefault = defaultVal
+                ? `, ${formatString(defaultVal)}`
+                : "";
+              const args = `${formatString(name)}, ${formatString(placeholder)}${formattedDefault}`;
+              return `form.textField(${args});`;
+            }
+            if (input.type === "toggle") {
+              const defaultVal =
+                input.props.toggleDefault === "true" ? "true" : "false";
+              return `form.toggle(${formatString(name)}, ${defaultVal});`;
+            }
+            return "";
+          })
+          .join("\n  ");
+
+        const submitBtn = buttons[0];
+        const submitText = submitBtn
+          ? submitBtn.props.text || submitBtn.name
+          : "Submit";
+
+        formBuilder += `\n  ${formFields}`;
+        formBuilder += `\n  form.submitButton("${submitText}");`;
+
+        logicCode = `const formValues = response.formValues;\n    player.sendMessage("Form submitted!");`;
+
+        inputs.forEach((input, index) => {
+          if (
+            input.type === "textfield" &&
+            input.props.correctAnswer &&
+            input.variableActions?.length
+          ) {
+            logicCode += `\n    if (formValues[${index}] === "${input.props.correctAnswer}") {`;
+            logicCode += `\n        player.sendMessage("§aCorrect Answer!");`;
+            logicCode += `\n        ${generateVarActionCode(input.variableActions)}`;
+            logicCode += `\n    } else { player.sendMessage("§cIncorrect Answer."); }`;
+          }
+          if (
+            input.type === "player_picker" &&
+            (input.variableActions?.length || input.variableActionsTarget?.length)
+          ) {
+            logicCode += `\n    const targetPlayerIndex_${index} = formValues[${index}];\n    const targetPlayer_${index} = allPlayers[targetPlayerIndex_${index}];`;
+            logicCode += `\n    if (targetPlayer_${index}) {`;
+            if (input.variableActions?.length) {
+              logicCode += `\n        ${generateVarActionCode(input.variableActions, "player")}`;
+            }
+            if (input.variableActionsTarget?.length) {
+              logicCode += `\n        ${generateVarActionCode(input.variableActionsTarget, `targetPlayer_${index}`)}`;
+            }
+            logicCode += `\n    }`;
+          }
+        });
+
+        if (submitBtn) {
+          logicCode += `\n    ${generateVarActionCode(submitBtn.variableActions)}`;
+        }
+      } else {
+        const actionUIElements = slide.elements.filter(
+          (e) => e.type === "button" || e.type === "image",
+        );
+
+        const btnCode = actionUIElements
+          .map((el) => {
+            if (el.type === "image") {
+              let iconStr = el.props.texture ? `, "${el.props.texture}"` : "";
+              return `.button(""${iconStr})`;
+            } else {
+              let text = el.props.text || el.name;
+              let iconStr = el.props.texture ? `, "${el.props.texture}"` : "";
+              return `.button("${text}"${iconStr})`;
+            }
+          })
+          .join("\n    ");
+
+        if (actionUIElements.length > 0) {
+          formBuilder += `\n  form\n    ${btnCode};`;
+        }
+
+        logicCode = actionUIElements
+          .map((el, i) => {
+            if (el.type === "image" && !el.variableActions?.length) return "";
+            if (el.type === "image") {
+               let actionCode = generateVarActionCode(el.variableActions);
+               return `if (response.selection === ${i}) {\n      ${actionCode}\n    }`;
+            }
+            let actionCode = generateVarActionCode(el.variableActions);
+            return `if (response.selection === ${i}) {
+        // Player clicked ${el.props.text || el.name}
+        player.sendMessage("You clicked ${el.props.text || el.name}!");
+        ${actionCode}
+      }`;
+          })
+          .filter(Boolean)
+          .join(" else ");
+      }
+
+      guiFunctionsCode += `
+export function showCustomUI_${slide.id}(player) {
+  ${formBuilder}
+
+  form.show(player).then((response) => {
+    if (response.canceled) return;
+    
+    ${logicCode}
+    
+  }).catch(e => {
+    console.error(e);
+  });
+}
+`;
+    });
 
     const triggerEventCode = variables
       .map((v) => {
@@ -879,13 +969,13 @@ ${inc.destroyItemOnUse ? `        // Destroy item on use\n        try {\n       
         customTriggers
           .map((t) => {
             if (t.type === "itemUse")
-              return `world.afterEvents.itemUse.subscribe((event) => {\n  if (event.itemStack.typeId === "${t.config.itemId || "minecraft:stick"}") {\n    system.runTimeout(() => { showCustomUI(event.source); }, 5);\n  }\n});`;
+              return `world.afterEvents.itemUse.subscribe((event) => {\n  if (event.itemStack.typeId === "${t.config.itemId || "minecraft:stick"}") {\n    system.runTimeout(() => { showCustomUI(event.source); }, 20);\n  }\n});`;
             if (t.type === "blockBreak")
-              return `world.afterEvents.playerBreakBlock.subscribe((event) => {\n  if (event.block.typeId === "${t.config.blockId || "minecraft:dirt"}") {\n    system.runTimeout(() => { showCustomUI(event.player); }, 5);\n  }\n});`;
+              return `world.afterEvents.playerBreakBlock.subscribe((event) => {\n  if (event.block.typeId === "${t.config.blockId || "minecraft:dirt"}") {\n    system.runTimeout(() => { showCustomUI(event.player); }, 20);\n  }\n});`;
             if (t.type === "entityHit")
-              return `world.afterEvents.entityHitEntity.subscribe((event) => {\n  if (event.hitEntity.typeId === "${t.config.entityId || "minecraft:cow"}" && event.damagingEntity.typeId === "minecraft:player") {\n    system.runTimeout(() => { showCustomUI(event.damagingEntity); }, 5);\n  }\n});`;
+              return `world.afterEvents.entityHitEntity.subscribe((event) => {\n  if (event.hitEntity.typeId === "${t.config.entityId || "minecraft:cow"}" && event.damagingEntity.typeId === "minecraft:player") {\n    system.runTimeout(() => { showCustomUI(event.damagingEntity); }, 20);\n  }\n});`;
             if (t.type === "chatCommand")
-              return `world.beforeEvents.chatSend.subscribe((event) => {\n  if (event.message === "${t.config.command || "!showgui"}") {\n    event.cancel = true;\n    system.runTimeout(() => { showCustomUI(event.sender); }, 5);\n  }\n});`;
+              return `world.beforeEvents.chatSend.subscribe((event) => {\n  if (event.message === "${t.config.command || "!showgui"}") {\n    event.cancel = true;\n    system.runTimeout(() => { showCustomUI(event.sender); }, 20);\n  }\n});`;
             if (t.type === "aiGenerated")
               return `// AI Generated code from prompt: "${t.config.prompt}"\n${t.config.code || "// Not generated yet"}`;
             return "";
@@ -933,7 +1023,7 @@ console.error = function(...args) {
       : "";
 
     return `import { world, system } from "@minecraft/server";
-import { ${formType} } from "@minecraft/server-ui";
+import { ModalFormData, ActionFormData } from "@minecraft/server-ui";
 ${interceptorCode}
 /**
  * Script API Custom UI Generated Code
@@ -979,23 +1069,17 @@ ${
     // UI must be shown on a slight delay to avoid item use overlap cancelling it
     system.runTimeout(() => {
        showCustomUI(player);
-    }, 5);
+    }, 20);
   }
 });`
 }
 
 ${customTriggersCode}
 
-export function showCustomUI(player) {
-  ${formBuilder}
+${guiFunctionsCode}
 
-  form.show(player).then((response) => {
-    if (response.canceled) return;
-    
-    ${logicCode}
-  }).catch(e => {
-    console.error(e);
-  });
+export function showCustomUI(player) {
+  showCustomUI_${guiSlides[0]?.id || "main"}(player);
 }
 `;
   };
@@ -1045,6 +1129,22 @@ export function showCustomUI(player) {
   };
 
   const addElement = (type: ElementType) => {
+    const activeSlide = guiSlides.find(s => s.id === activeSlideId);
+    if (!activeSlide && viewMode !== "book_editor") return;
+
+    if (viewMode !== "book_editor" && activeSlide) {
+      if (activeSlide.slideType === "interactive" && type === "label") {
+        if (activeSlide.elements.some(e => e.type === "label")) {
+          alert("Interactive GUIs can only have 1 single label (the title) at the top.");
+          return;
+        }
+      }
+      if (activeSlide.slideType === "text_display" && ["dropdown", "slider", "textfield", "toggle", "player_picker"].includes(type)) {
+        alert("Text Display GUIs cannot contain interactive inputs. Please add an Interactive Slide for inputs.");
+        return;
+      }
+    }
+
     const newEl: EditorElement = {
       id: Math.random().toString(36).substr(2, 9),
       type,
@@ -1057,6 +1157,87 @@ export function showCustomUI(player) {
     };
     setElements([...elements, newEl]);
     setSelectedId(newEl.id);
+  };
+
+  const handleAddSlide = () => {
+    if (viewMode === "book_editor") return;
+    setShowSlideModal(true);
+  };
+
+  const handleDeleteSlide = () => {
+    if (guiSlides.length <= 1) {
+      alert("Cannot delete the only remaining slide.");
+      return;
+    }
+    setGuiSlides((prev) => {
+      const next = prev.filter((s) => s.id !== activeSlideId);
+      setActiveSlideId(next[0].id);
+      return next;
+    });
+  };
+
+  const confirmAddSlide = (slideType: "interactive" | "text_display") => {
+    const newSlideId = "slide_" + generateUUID().split("-")[0];
+    const newSlide: GuiSlide = {
+      id: newSlideId,
+      name: slideType === "interactive" ? "Interactive Slide" : "Text Slide",
+      slideType: slideType,
+      elements: [
+        {
+          id: Math.random().toString(36).substr(2, 9),
+          type: "panel",
+          x: 200,
+          y: 150,
+          width: 400,
+          height: 220,
+          name: "Main Background",
+          props: { texture: "textures/gui/new_bg.png" },
+        },
+        {
+          id: Math.random().toString(36).substr(2, 9),
+          type: "label",
+          x: 200,
+          y: 100,
+          width: 400,
+          height: 20,
+          name: "Title",
+          props: { text: "New GUI Title" },
+        },
+        // Auto-added back button
+        {
+          id: Math.random().toString(36).substr(2, 9),
+          type: "image",
+          x: 200,
+          y: 250,
+          width: 32,
+          height: 32,
+          name: "Back Button",
+          props: { texture: "textures/ui/arrow_left" },
+          variableActions: [{ varId: `_NAV_${activeSlideId}`, amount: 1 }]
+        }
+      ]
+    };
+    
+    // Auto-add next button to current slide
+    const currentSlideBtn: EditorElement = {
+      id: Math.random().toString(36).substr(2, 9),
+      type: "image",
+      x: 350,
+      y: 250,
+      width: 32,
+      height: 32,
+      name: `Open ${newSlide.name}`,
+      props: { texture: "textures/ui/arrow_right" },
+      variableActions: [{ varId: `_NAV_${newSlideId}`, amount: 1 }]
+    };
+    
+    setGuiSlides((prev) => {
+      const next = prev.map(s => s.id === activeSlideId ? { ...s, elements: [...s.elements, currentSlideBtn] } : s);
+      return [...next, newSlide];
+    });
+    
+    setActiveSlideId(newSlideId);
+    setShowSlideModal(false);
   };
 
   const updateSelectedProp = (key: string, value: string) => {
@@ -1164,9 +1345,12 @@ export function showCustomUI(player) {
           </button>
           {appPhase === "builder" && (
             <>
-              <div className="text-[10px] text-[#777] font-mono mr-4 ml-2">
-                PROJECT: attribute_levelup.json
-              </div>
+              <input
+                type="text"
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                className="text-[10px] bg-transparent text-[#777] font-mono mr-4 ml-2 border-b border-transparent hover:border-[#555] focus:border-[#3498db] outline-none"
+              />
               <button className="px-3 py-1 bg-[#444] text-white text-[11px] font-bold uppercase rounded hover:bg-[#555] transition-colors flex items-center gap-1">
                 <Play className="w-3 h-3" />
                 Preview
@@ -1228,13 +1412,14 @@ export function showCustomUI(player) {
                     "BP/manifest.json:\n" + generateBPManifest() + "\n\n";
                   allCode +=
                     "RP/manifest.json:\n" + generateRPManifest() + "\n\n";
+                  const allGuiElts = guiSlides.flatMap(s => s.elements);
                   let langBookText =
                     openedFrom === "book"
                       ? `item.custom:gui_book.name=GUI Book\n\n`
                       : "";
                   allCode +=
                     "RP/texts/en_US.lang:\n" +
-                    `${langBookText}${[...guiElements, ...bookElements]
+                    `${langBookText}${[...allGuiElts, ...bookElements]
                       .filter((e) => e.type === "label")
                       .map(
                         (e) =>
@@ -1318,12 +1503,20 @@ export function showCustomUI(player) {
                 )}
               </div>
 
-              <button
-                onClick={handleStartBuilder}
-                className="w-full py-3 bg-[#4CAF50] text-white font-bold uppercase tracking-wide rounded hover:bg-[#45a049] transition-colors shadow-lg"
-              >
-                Start Creating GUI
-              </button>
+              <div className="flex gap-4 w-full">
+                <button
+                  onClick={() => handleStartBuilder("interactive")}
+                  className="flex-1 py-3 bg-[#3498db] text-white font-bold text-sm rounded hover:bg-[#2980b9] transition-colors shadow-lg"
+                >
+                  Create Interactive GUI<br/><span className="text-[10px] opacity-75 font-normal">(With Inputs & Data)</span>
+                </button>
+                <button
+                  onClick={() => handleStartBuilder("text_display")}
+                  className="flex-1 py-3 bg-[#9b59b6] text-white font-bold text-sm rounded hover:bg-[#8e44ad] transition-colors shadow-lg"
+                >
+                  Create Text Display GUI<br/><span className="text-[10px] opacity-75 font-normal">(Multiple Text Blocks)</span>
+                </button>
+              </div>
             </div>
           </div>
         ) : viewMode === "designer" ? (
@@ -1347,55 +1540,88 @@ export function showCustomUI(player) {
                   >
                     <MousePointer2 className="w-3 h-3" /> Button
                   </button>
-                  <button
-                    onClick={() => addElement("label")}
-                    className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer"
-                  >
-                    <Type className="w-3 h-3" /> Label
-                  </button>
+                  {(!guiSlides.find(s => s.id === activeSlideId) || guiSlides.find(s => s.id === activeSlideId)?.slideType === "text_display" || (guiSlides.find(s => s.id === activeSlideId)?.slideType === "interactive" && !guiSlides.find(s => s.id === activeSlideId)?.elements.some(e => e.type === "label"))) && (
+                    <button
+                      onClick={() => addElement("label")}
+                      className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer"
+                    >
+                      <Type className="w-3 h-3" /> Label
+                    </button>
+                  )}
                   <button
                     onClick={() => addElement("image")}
                     className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer"
                   >
                     <ImageIcon className="w-3 h-3" /> Image
                   </button>
-                  <button
-                    onClick={() => addElement("dropdown")}
-                    className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer"
-                  >
-                    <List className="w-3 h-3" /> Dropdown
-                  </button>
-                  <button
-                    onClick={() => addElement("slider")}
-                    className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer"
-                  >
-                    <SlidersHorizontal className="w-3 h-3" /> Slider
-                  </button>
-                  <button
-                    onClick={() => addElement("textfield")}
-                    className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-[10px] text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer"
-                  >
-                    <TextCursorInput className="w-3 h-3" /> TextField
-                  </button>
-                  <button
-                    onClick={() => addElement("toggle")}
-                    className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer"
-                  >
-                    <CheckSquare className="w-3 h-3" /> Toggle
-                  </button>
-                  <button
-                    onClick={() => addElement("player_picker")}
-                    className="h-8 bg-[#333] border border-[#444] rounded flex flex-col items-center justify-center gap-0.5 text-[9px] text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer"
-                    style={{ gridColumn: "span 2" }}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <Users className="w-3 h-3" /> Player Picker
-                    </div>
-                  </button>
+                  {(!guiSlides.find(s => s.id === activeSlideId) || guiSlides.find(s => s.id === activeSlideId)?.slideType === "interactive") && (
+                    <>
+                      <button
+                        onClick={() => addElement("dropdown")}
+                        className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer"
+                      >
+                        <List className="w-3 h-3" /> Dropdown
+                      </button>
+                      <button
+                        onClick={() => addElement("slider")}
+                        className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer"
+                      >
+                        <SlidersHorizontal className="w-3 h-3" /> Slider
+                      </button>
+                      <button
+                        onClick={() => addElement("textfield")}
+                        className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-[10px] text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer"
+                      >
+                        <TextCursorInput className="w-3 h-3" /> TextField
+                      </button>
+                      <button
+                        onClick={() => addElement("toggle")}
+                        className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer"
+                      >
+                        <CheckSquare className="w-3 h-3" /> Toggle
+                      </button>
+                      <button
+                        onClick={() => addElement("player_picker")}
+                        className="h-8 bg-[#333] border border-[#444] rounded flex flex-col items-center justify-center gap-0.5 text-[9px] text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer"
+                        style={{ gridColumn: "span 2" }}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <Users className="w-3 h-3" /> Player Picker
+                        </div>
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
 
               <div className="flex-1 overflow-hidden flex flex-col">
+                {viewMode !== "book_editor" && (
+                  <div className="p-2 border-b border-[#333]">
+                    <div className="flex justify-between items-center mb-1">
+                      <div className="text-[10px] font-bold text-[#888] uppercase">GUI Slides</div>
+                      <div className="flex items-center gap-2">
+                        <button onClick={handleAddSlide} className="text-[#aaa] hover:text-white" title="Add New Slide">
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={handleDeleteSlide} className="text-[#aaa] hover:text-red-400" title="Delete Current Slide" disabled={guiSlides.length <= 1}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                    <select
+                      value={activeSlideId}
+                      onChange={(e) => setActiveSlideId(e.target.value)}
+                      className="w-full bg-[#111] border border-[#444] text-[#dcdcaa] text-xs p-1 rounded outline-none focus:border-[#3498db]"
+                    >
+                      {guiSlides.map(s => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.slideType === "interactive" ? "Interactive" : "Text Display"})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                
                 <div className="p-2 bg-[#2a2a2a] text-[10px] font-bold text-[#888] flex justify-between items-center uppercase">
                   <span className="flex items-center gap-1">
                     <Layers className="w-3 h-3" /> Layers
@@ -1455,11 +1681,36 @@ export function showCustomUI(player) {
 
             {/* Center: Canvas Viewport */}
             <main
-              className="flex-1 bg-[#202020] relative overflow-hidden flex items-center justify-center shadow-inner"
+              className="flex-1 bg-[#202020] relative overflow-hidden flex flex-col items-center justify-center shadow-inner"
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}
               onPointerLeave={handlePointerUp}
             >
+              {guiElements.some((e) =>
+                ["dropdown", "slider", "textfield", "toggle", "player_picker"].includes(e.type),
+              ) &&
+                guiElements.filter((e) => e.type === "label").length > 1 && (
+                  <div className="absolute top-4 left-4 right-4 z-50 bg-[#3a1a1a]/90 backdrop-blur border border-[#dd3b3b] shadow-2xl text-[#ffa3a3] p-4 text-xs leading-relaxed rounded-md">
+                    <div className="font-bold text-sm flex items-center gap-2 mb-2">
+                      <span role="img" aria-label="error">
+                        ⚠️
+                      </span>{" "}
+                      Missing Labels Warning
+                    </div>
+                    You have added both <b>Form Inputs</b> (Dropdown, Slider,
+                    etc.) and <b>Labels</b>. Because Minecraft's{" "}
+                    <code>ModalFormData</code> does not support text bodies
+                    natively, your labels will be hidden in the exported Script
+                    API code. Only the very first label will be preserved as the
+                    Form Title.
+                    <br />
+                    <br />
+                    <b>Want to show text/variables?</b> If your UI has no inputs (only buttons), it is exported as <code>ActionFormData</code> which fully supports body text! Otherwise, you can type{" "}
+                    <code>{"{YourVar}"}</code> directly in the titles or
+                    placeholders of Sliders, Dropdowns, and TextFields, and it
+                    will automatically replace it with the live variable value!
+                  </div>
+                )}
               {/* Grid Background */}
               <div
                 className="absolute inset-0 pointer-events-none"
@@ -3230,7 +3481,8 @@ export function showCustomUI(player) {
 }`;
                     }
                     if (selectedFile === "RP/texts/en_US.lang") {
-                      const allElements = [...guiElements, ...bookElements];
+                      const allGuiElts = guiSlides.flatMap(s => s.elements);
+                      const allElements = [...allGuiElts, ...bookElements];
                       const labels = allElements
                         .filter((e) => e.type === "label")
                         .map(
@@ -3333,32 +3585,6 @@ export function showCustomUI(player) {
                 natively in 1.21+!
               </div>
 
-              {guiElements.some((e) =>
-                ["dropdown", "slider", "textfield", "toggle", "player_picker"].includes(e.type),
-              ) &&
-                guiElements.some((e) => e.type === "label") && (
-                  <div className="bg-[#3a1a1a] border-b border-[#dd3b3b] text-[#ffa3a3] p-3 text-xs leading-relaxed">
-                    <div className="font-bold flex items-center gap-1.5 mb-1">
-                      <span role="img" aria-label="error">
-                        ⚠️
-                      </span>{" "}
-                      Missing Labels Warning
-                    </div>
-                    You have added both <b>Form Inputs</b> (Dropdown, Slider,
-                    etc.) and <b>Labels</b>. Because Minecraft's{" "}
-                    <code>ModalFormData</code> does not support text bodies
-                    natively, your labels will be hidden in the exported Script
-                    API code. Only the very first label will be preserved as the
-                    Form Title.
-                    <br />
-                    <br />
-                    <b>Want to show text/variables?</b> If your UI has no inputs (only buttons), it is exported as <code>ActionFormData</code> which fully supports body text! Otherwise, you can type{" "}
-                    <code>{"{YourVar}"}</code> directly in the titles or
-                    placeholders of Sliders, Dropdowns, and TextFields, and it
-                    will automatically replace it with the live variable value!
-                  </div>
-                )}
-
               <div className="flex-1 p-4 overflow-auto custom-scrollbar">
                 <pre className="text-[12px] font-mono text-[#dcdcaa] leading-relaxed">
                   {selectedFile === "BP/manifest.json" && generateBPManifest()}
@@ -3426,7 +3652,7 @@ export function showCustomUI(player) {
                     (openedFrom === "book"
                       ? `item.custom:gui_book.name=GUI Book\n\n`
                       : "") +
-                      `${[...guiElements, ...bookElements]
+                      `${[...guiSlides.flatMap(s => s.elements), ...bookElements]
                         .filter((e) => e.type === "label")
                         .map(
                           (e) =>
@@ -3467,6 +3693,39 @@ export function showCustomUI(player) {
           Drag & Drop GUI Builder | v1.1.0
         </div>
       </footer>
+
+      {showSlideModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+          <div className="bg-[#252525] border border-[#333] rounded-lg shadow-2xl p-6 max-w-lg w-full flex flex-col items-center">
+            <h2 className="text-white text-xl font-bold mb-2">Create New GUI Slide</h2>
+            <p className="text-[#aaa] text-sm text-center mb-6">
+              Choose the type of interface this slide will represent.
+            </p>
+            <div className="flex gap-4 w-full">
+              <button
+                onClick={() => confirmAddSlide("interactive")}
+                className="flex-1 p-4 bg-[#3498db] text-white font-bold text-sm rounded hover:bg-[#2980b9] transition-colors flex flex-col items-center shadow-lg"
+              >
+                <span>Interactive GUI</span>
+                <span className="text-[10px] opacity-75 font-normal mt-1 text-center">(Forms, Inputs, Data logic)</span>
+              </button>
+              <button
+                onClick={() => confirmAddSlide("text_display")}
+                className="flex-1 p-4 bg-[#9b59b6] text-white font-bold text-sm rounded hover:bg-[#8e44ad] transition-colors flex flex-col items-center shadow-lg"
+              >
+                <span>Text Display GUI</span>
+                <span className="text-[10px] opacity-75 font-normal mt-1 text-center">(Multiple Text labels)</span>
+              </button>
+            </div>
+            <button
+               onClick={() => setShowSlideModal(false)}
+               className="mt-6 text-[#888] hover:text-white text-xs underline"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {showSettings && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
