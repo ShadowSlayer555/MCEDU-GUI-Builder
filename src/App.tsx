@@ -754,9 +754,11 @@ export default function App() {
             }
             let v = variables.find((v) => v.id === action.varId);
             if (!v) return "";
-            return `let val_${v.name} = getVar("${v.scope}", "${v.name}", ${targetName});
-        setVar("${v.scope}", "${v.name}", ${targetName}, val_${v.name} + ${resolveAmount(action.amount)}, ${v.min !== null ? v.min : "null"}, ${v.max !== null ? v.max : "null"});
-        ${targetName}.sendMessage("§a${v.name} is now: " + getVar("${v.scope}", "${v.name}", ${targetName}));`;
+            return `{
+          let val_${v.name} = getVar("${v.scope}", "${v.name}", ${targetName});
+          setVar("${v.scope}", "${v.name}", ${targetName}, val_${v.name} + ${resolveAmount(action.amount)}, ${v.min !== null ? v.min : "null"}, ${v.max !== null ? v.max : "null"});
+          ${targetName}.sendMessage("§a${v.name} is now: " + getVar("${v.scope}", "${v.name}", ${targetName}));
+        }`;
           })
           .join("\n      ");
         return code;
@@ -1255,6 +1257,11 @@ export function showCustomUI(player) {
     );
   };
 
+  const handleDeleteElement = (id: string) => {
+    setElements((prev) => prev.filter((el) => el.id !== id));
+    if (selectedId === id) setSelectedId(null);
+  };
+
   const updateSelectedDimensions = (width: number, height: number) => {
     if (!selectedId) return;
     setElements((prev) =>
@@ -1270,9 +1277,9 @@ export function showCustomUI(player) {
   const selectedElement = elements.find((el) => el.id === selectedId);
 
   return (
-    <div className="w-full h-screen bg-[#1a1a1a] text-[#e0e0e0] font-sans flex flex-col overflow-hidden select-none">
+    <div className="w-full h-screen bg-zinc-950 text-zinc-200 font-sans flex flex-col overflow-hidden select-none">
       {/* Top Navigation Bar */}
-      <header className="h-12 border-b border-[#333] flex items-center justify-between px-4 bg-[#252525] shrink-0">
+      <header className="h-14 border-b border-zinc-800 flex items-center justify-between px-6 bg-zinc-900 shrink-0">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 bg-[#4CAF50] rounded flex items-center justify-center">
@@ -1282,9 +1289,9 @@ export function showCustomUI(player) {
               BlockGui.Edu
             </span>
           </div>
-          <div className="h-6 w-[1px] bg-[#444]"></div>
+          <div className="h-6 w-[1px] bg-zinc-700"></div>
           {appPhase === "builder" && (
-            <nav className="flex gap-4 text-xs font-medium uppercase tracking-wider text-[#999]">
+            <nav className="flex gap-4 text-xs font-medium uppercase tracking-wider text-zinc-400">
               <span
                 onClick={() => setViewMode("designer")}
                 className={`cursor-pointer transition-colors ${viewMode === "designer" ? "text-blue-400 font-bold" : "hover:text-white"}`}
@@ -1324,21 +1331,21 @@ export function showCustomUI(player) {
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="px-3 py-1 bg-[#444] text-white text-[11px] font-bold uppercase rounded hover:bg-[#555] transition-colors flex items-center gap-1"
+            className="px-3 py-1.5 bg-zinc-800 text-zinc-200 text-[11px] font-bold uppercase rounded hover:bg-zinc-700 transition-colors flex items-center gap-1.5 shadow-sm"
           >
-            <FolderOpen className="w-3 h-3" /> Load Project
+            <FolderOpen className="w-3.5 h-3.5" /> Load Project
           </button>
           {appPhase === "builder" && (
             <button
               onClick={handleSaveProject}
-              className="px-3 py-1 bg-[#4CAF50] text-white text-[11px] font-bold uppercase rounded hover:bg-[#45a049] transition-colors flex items-center gap-1"
+              className="px-3 py-1.5 bg-green-600 text-white text-[11px] font-bold uppercase rounded hover:bg-green-500 transition-colors flex items-center gap-1.5 shadow-sm"
             >
-              <Download className="w-3 h-3" /> Save Project
+              <Download className="w-3.5 h-3.5" /> Save Project
             </button>
           )}
           <button
             onClick={() => setShowSettings(true)}
-            className="p-1.5 text-[#aaa] hover:text-white hover:bg-[#333] rounded transition-colors"
+            className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded transition-colors"
             title="Settings"
           >
             <Key className="w-4 h-4" />
@@ -1349,17 +1356,17 @@ export function showCustomUI(player) {
                 type="text"
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
-                className="text-[10px] bg-transparent text-[#777] font-mono mr-4 ml-2 border-b border-transparent hover:border-[#555] focus:border-[#3498db] outline-none"
+                className="text-xs bg-transparent text-zinc-400 font-mono mr-4 ml-2 border-b border-transparent hover:border-zinc-700 focus:border-blue-500 outline-none px-1"
               />
-              <button className="px-3 py-1 bg-[#444] text-white text-[11px] font-bold uppercase rounded hover:bg-[#555] transition-colors flex items-center gap-1">
-                <Play className="w-3 h-3" />
+              <button className="px-3 py-1.5 bg-blue-600 text-white text-[11px] font-bold uppercase rounded hover:bg-blue-500 transition-colors flex items-center gap-1.5 shadow-sm">
+                <Play className="w-3.5 h-3.5" />
                 Preview
               </button>
               <button
                 onClick={() => setInGameLogs(!inGameLogs)}
-                className={`px-3 py-1 text-[11px] font-bold uppercase rounded transition-colors flex items-center gap-1 ${inGameLogs ? "bg-green-600 text-white hover:bg-green-500" : "bg-[#444] text-[#aaa] hover:bg-[#555] hover:text-white"}`}
+                className={`px-3 py-1.5 text-[11px] font-bold uppercase rounded transition-colors flex items-center gap-1.5 shadow-sm ${inGameLogs ? "bg-green-600 text-white hover:bg-green-500" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white"}`}
               >
-                <Terminal className="w-3 h-3" />{" "}
+                <Terminal className="w-3.5 h-3.5" />{" "}
                 {inGameLogs ? "Ingame Logs: ON" : "Ingame Logs: OFF"}
               </button>
               <button
@@ -1449,18 +1456,18 @@ export function showCustomUI(player) {
       <div className="flex-1 flex overflow-hidden">
         {appPhase === "setup" ? (
           <div className="flex-1 flex flex-col items-center justify-center bg-[#121212] p-8">
-            <div className="max-w-md w-full bg-[#212121] border border-[#333] rounded shadow-2xl p-6">
+            <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded shadow-2xl p-6">
               <h2 className="text-xl font-bold uppercase tracking-wider text-white mb-2">
                 GUI Configuration
               </h2>
-              <p className="text-[#888] text-sm mb-6">
+              <p className="text-zinc-500 text-sm mb-6">
                 Configure how your custom Mod UI is accessed in-game by the
                 player.
               </p>
 
               <div className="flex flex-col gap-4 mb-8">
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[11px] font-bold text-[#aaa] uppercase tracking-wider">
+                  <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
                     GUI Opened From
                   </label>
                   <select
@@ -1470,7 +1477,7 @@ export function showCustomUI(player) {
                         e.target.value as "book" | "modded_item" | "hidden",
                       )
                     }
-                    className="bg-[#111] border border-[#333] px-3 py-2 rounded text-white text-sm outline-none focus:border-blue-500"
+                    className="bg-zinc-950 border border-zinc-800 px-3 py-2 rounded text-white text-sm outline-none focus:border-blue-500"
                   >
                     <option value="book">Book (Given to all on spawn)</option>
                     <option value="modded_item">Modded Item</option>
@@ -1482,7 +1489,7 @@ export function showCustomUI(player) {
 
                 {openedFrom === "modded_item" && (
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-[11px] font-bold text-[#aaa] uppercase tracking-wider">
+                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
                       Item Identifier
                     </label>
                     <input
@@ -1490,7 +1497,7 @@ export function showCustomUI(player) {
                       value={moddedItemName}
                       onChange={(e) => setModdedItemName(e.target.value)}
                       placeholder="my_namespace:item_id"
-                      className="bg-[#111] border border-[#333] px-3 py-2 rounded text-white text-sm outline-none focus:border-blue-500 font-mono"
+                      className="bg-zinc-950 border border-zinc-800 px-3 py-2 rounded text-white text-sm outline-none focus:border-blue-500 font-mono"
                     />
                     <p className="text-[10px] text-yellow-500/80 mt-1 leading-relaxed">
                       <strong>Note for Vanilla Items:</strong> Normal items like{" "}
@@ -1522,35 +1529,35 @@ export function showCustomUI(player) {
         ) : viewMode === "designer" ? (
           <>
             {/* Left Sidebar: Assets & Layers */}
-            <aside className="w-64 border-r border-[#333] flex flex-col bg-[#212121] shrink-0">
-              <div className="p-3 border-b border-[#333]">
-                <div className="text-[10px] font-bold text-[#666] uppercase mb-2">
+            <aside className="w-64 border-r border-zinc-800 flex flex-col bg-zinc-900 shrink-0">
+              <div className="p-3 border-b border-zinc-800">
+                <div className="text-[10px] font-bold text-zinc-500 uppercase mb-2">
                   GUI Toolbox
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => addElement("panel")}
-                    className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer"
+                    className="h-8 bg-zinc-800 border border-zinc-700 rounded flex items-center justify-center gap-2 text-xs text-zinc-300 hover:bg-zinc-700 hover:border-zinc-600 transition-colors shadow-sm cursor-pointer"
                   >
                     <Square className="w-3 h-3" /> Panel
                   </button>
                   <button
                     onClick={() => addElement("button")}
-                    className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer"
+                    className="h-8 bg-zinc-800 border border-zinc-700 rounded flex items-center justify-center gap-2 text-xs text-zinc-300 hover:bg-zinc-700 hover:border-zinc-600 transition-colors shadow-sm cursor-pointer"
                   >
                     <MousePointer2 className="w-3 h-3" /> Button
                   </button>
                   {(!guiSlides.find(s => s.id === activeSlideId) || guiSlides.find(s => s.id === activeSlideId)?.slideType === "text_display" || (guiSlides.find(s => s.id === activeSlideId)?.slideType === "interactive" && !guiSlides.find(s => s.id === activeSlideId)?.elements.some(e => e.type === "label"))) && (
                     <button
                       onClick={() => addElement("label")}
-                      className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer"
+                      className="h-8 bg-zinc-800 border border-zinc-700 rounded flex items-center justify-center gap-2 text-xs text-zinc-300 hover:bg-zinc-700 hover:border-zinc-600 transition-colors shadow-sm cursor-pointer"
                     >
                       <Type className="w-3 h-3" /> Label
                     </button>
                   )}
                   <button
                     onClick={() => addElement("image")}
-                    className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer"
+                    className="h-8 bg-zinc-800 border border-zinc-700 rounded flex items-center justify-center gap-2 text-xs text-zinc-300 hover:bg-zinc-700 hover:border-zinc-600 transition-colors shadow-sm cursor-pointer"
                   >
                     <ImageIcon className="w-3 h-3" /> Image
                   </button>
@@ -1558,31 +1565,31 @@ export function showCustomUI(player) {
                     <>
                       <button
                         onClick={() => addElement("dropdown")}
-                        className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer"
+                        className="h-8 bg-zinc-800 border border-zinc-700 rounded flex items-center justify-center gap-2 text-xs text-zinc-300 hover:bg-zinc-700 hover:border-zinc-600 transition-colors shadow-sm cursor-pointer"
                       >
                         <List className="w-3 h-3" /> Dropdown
                       </button>
                       <button
                         onClick={() => addElement("slider")}
-                        className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer"
+                        className="h-8 bg-zinc-800 border border-zinc-700 rounded flex items-center justify-center gap-2 text-xs text-zinc-300 hover:bg-zinc-700 hover:border-zinc-600 transition-colors shadow-sm cursor-pointer"
                       >
                         <SlidersHorizontal className="w-3 h-3" /> Slider
                       </button>
                       <button
                         onClick={() => addElement("textfield")}
-                        className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-[10px] text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer"
+                        className="h-8 bg-zinc-800 border border-zinc-700 rounded flex items-center justify-center gap-2 text-[10px] text-zinc-300 hover:bg-zinc-700 hover:border-zinc-600 transition-colors shadow-sm cursor-pointer"
                       >
                         <TextCursorInput className="w-3 h-3" /> TextField
                       </button>
                       <button
                         onClick={() => addElement("toggle")}
-                        className="h-8 bg-[#333] border border-[#444] rounded flex items-center justify-center gap-2 text-xs text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer"
+                        className="h-8 bg-zinc-800 border border-zinc-700 rounded flex items-center justify-center gap-2 text-xs text-zinc-300 hover:bg-zinc-700 hover:border-zinc-600 transition-colors shadow-sm cursor-pointer"
                       >
                         <CheckSquare className="w-3 h-3" /> Toggle
                       </button>
                       <button
                         onClick={() => addElement("player_picker")}
-                        className="h-8 bg-[#333] border border-[#444] rounded flex flex-col items-center justify-center gap-0.5 text-[9px] text-[#aaa] hover:bg-[#3a3a3a] hover:border-[#555] cursor-pointer"
+                        className="h-8 bg-zinc-800 border border-zinc-700 rounded flex flex-col items-center justify-center gap-0.5 text-[9px] text-zinc-300 hover:bg-zinc-700 hover:border-zinc-600 transition-colors shadow-sm cursor-pointer"
                         style={{ gridColumn: "span 2" }}
                       >
                         <div className="flex items-center gap-1.5">
@@ -1596,14 +1603,14 @@ export function showCustomUI(player) {
 
               <div className="flex-1 overflow-hidden flex flex-col">
                 {viewMode !== "book_editor" && (
-                  <div className="p-2 border-b border-[#333]">
-                    <div className="flex justify-between items-center mb-1">
-                      <div className="text-[10px] font-bold text-[#888] uppercase">GUI Slides</div>
+                  <div className="p-3 border-b border-zinc-800 bg-zinc-900 shadow-sm">
+                    <div className="flex justify-between items-center mb-2">
+                      <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">GUI Slides</div>
                       <div className="flex items-center gap-2">
-                        <button onClick={handleAddSlide} className="text-[#aaa] hover:text-white" title="Add New Slide">
+                        <button onClick={handleAddSlide} className="text-zinc-400 hover:text-white" title="Add New Slide">
                           <Plus className="w-3.5 h-3.5" />
                         </button>
-                        <button onClick={handleDeleteSlide} className="text-[#aaa] hover:text-red-400" title="Delete Current Slide" disabled={guiSlides.length <= 1}>
+                        <button onClick={handleDeleteSlide} className="text-zinc-400 hover:text-red-400" title="Delete Current Slide" disabled={guiSlides.length <= 1}>
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -1611,7 +1618,7 @@ export function showCustomUI(player) {
                     <select
                       value={activeSlideId}
                       onChange={(e) => setActiveSlideId(e.target.value)}
-                      className="w-full bg-[#111] border border-[#444] text-[#dcdcaa] text-xs p-1 rounded outline-none focus:border-[#3498db]"
+                      className="w-full bg-zinc-950 border border-zinc-700 text-blue-300 font-medium text-xs p-1.5 rounded outline-none focus:border-blue-500 shadow-inner"
                     >
                       {guiSlides.map(s => (
                         <option key={s.id} value={s.id}>
@@ -1622,13 +1629,13 @@ export function showCustomUI(player) {
                   </div>
                 )}
                 
-                <div className="p-2 bg-[#2a2a2a] text-[10px] font-bold text-[#888] flex justify-between items-center uppercase">
-                  <span className="flex items-center gap-1">
-                    <Layers className="w-3 h-3" /> Layers
+                <div className="p-3 bg-zinc-900 border-b border-zinc-800 text-[10px] font-bold text-zinc-500 flex justify-between items-center uppercase tracking-wider">
+                  <span className="flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5" /> Layers
                   </span>
                   <span>({elements.length})</span>
                 </div>
-                <div className="flex-1 bg-[#1e1e1e] overflow-y-auto pt-1">
+                <div className="flex-1 bg-zinc-950 overflow-y-auto px-1.5 py-2 scrollbar-thin scrollbar-thumb-zinc-700">
                   {elements
                     .slice()
                     .reverse()
@@ -1641,38 +1648,48 @@ export function showCustomUI(player) {
                         onDrop={(e) => handleLayerDrop(e, el.id)}
                         onDragEnd={() => setDraggedLayerId(null)}
                         onClick={() => setSelectedId(el.id)}
-                        className={`p-2 mx-1 rounded flex items-center gap-2 mb-1 cursor-pointer transition-colors ${selectedId === el.id ? "bg-[#333] border-l-2 border-blue-500" : "border-l-2 border-transparent hover:bg-[#2a2a2a]"} ${draggedLayerId === el.id ? "opacity-50" : ""}`}
+                        className={`p-2 rounded-md flex items-center gap-2 mb-1 cursor-pointer transition-colors border shadow-sm ${selectedId === el.id ? "bg-zinc-800 border-zinc-700 text-white" : "border-transparent text-zinc-400 hover:bg-zinc-800/50"} ${draggedLayerId === el.id ? "opacity-50" : ""}`}
                       >
                         <GripVertical className="w-3 h-3 text-[#555] cursor-grab active:cursor-grabbing" />
                         {el.type === "panel" && (
-                          <Square className="w-3 h-3 text-[#aaa]" />
+                          <Square className="w-3 h-3 text-zinc-400" />
                         )}
                         {el.type === "button" && (
-                          <MousePointer2 className="w-3 h-3 text-[#aaa]" />
+                          <MousePointer2 className="w-3 h-3 text-zinc-400" />
                         )}
                         {el.type === "label" && (
-                          <Type className="w-3 h-3 text-[#aaa]" />
+                          <Type className="w-3 h-3 text-zinc-400" />
                         )}
                         {el.type === "image" && (
-                          <ImageIcon className="w-3 h-3 text-[#aaa]" />
+                          <ImageIcon className="w-3 h-3 text-zinc-400" />
                         )}
                         {el.type === "dropdown" && (
-                          <List className="w-3 h-3 text-[#aaa]" />
+                          <List className="w-3 h-3 text-zinc-400" />
                         )}
                         {el.type === "slider" && (
-                          <SlidersHorizontal className="w-3 h-3 text-[#aaa]" />
+                          <SlidersHorizontal className="w-3 h-3 text-zinc-400" />
                         )}
                         {el.type === "textfield" && (
-                          <TextCursorInput className="w-3 h-3 text-[#aaa]" />
+                          <TextCursorInput className="w-3 h-3 text-zinc-400" />
                         )}
                         {el.type === "toggle" && (
-                          <CheckSquare className="w-3 h-3 text-[#aaa]" />
+                          <CheckSquare className="w-3 h-3 text-zinc-400" />
                         )}
                         <span
-                          className={`text-[11px] truncate ${selectedId === el.id ? "text-white" : "text-[#aaa]"}`}
+                          className={`text-[11px] truncate flex-1 font-medium ${selectedId === el.id ? "text-white" : "text-zinc-400"}`}
                         >
                           {el.name}
                         </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteElement(el.id);
+                          }}
+                          className={`opacity-0 group-hover:opacity-100 transition-opacity text-zinc-500 hover:text-red-400 p-0.5 ${selectedId === el.id ? "opacity-100 text-red-400/50" : ""}`}
+                          title="Delete Element"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     ))}
                 </div>
@@ -1681,7 +1698,7 @@ export function showCustomUI(player) {
 
             {/* Center: Canvas Viewport */}
             <main
-              className="flex-1 bg-[#202020] relative overflow-hidden flex flex-col items-center justify-center shadow-inner"
+              className="flex-1 bg-zinc-950 relative overflow-hidden flex flex-col items-center justify-center shadow-[inset_0_2px_15px_rgba(0,0,0,0.5)]"
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}
               onPointerLeave={handlePointerUp}
@@ -1765,7 +1782,7 @@ export function showCustomUI(player) {
                         ${el.type === "panel" && !el.props.previewImage ? "bg-[#313233] border-[#1E1E1E]" : ""}
                         ${el.type === "button" ? "bg-[#3C3D3F] border-[#1E1E1E] flex items-center justify-center hover:bg-[#5A5B5D] active:border-white" : ""}
                         ${el.type === "image" && !el.props.previewImage ? "bg-[#2E2E2E] opacity-80" : ""}
-                        ${["dropdown", "textfield", "player_picker"].includes(el.type) ? "bg-[#1E1E20] border-[#111112] shadow-inner flex items-center px-3" : ""}
+                        ${["dropdown", "textfield", "player_picker"].includes(el.type) ? "bg-[#1E1E20] border-zinc-800 shadow-inner flex items-center px-3" : ""}
                         ${el.type === "slider" ? "bg-transparent flex flex-col justify-center" : ""}
                         ${el.type === "toggle" ? "bg-transparent flex items-center gap-2" : ""}
                      `}
@@ -1798,7 +1815,7 @@ export function showCustomUI(player) {
                                 : el.props.text || el.name}
                           </span>
                           {el.type === "player_picker" && (
-                            <Users className="w-3 h-3 text-[#aaa]" />
+                            <Users className="w-3 h-3 text-zinc-400" />
                           )}
                         </div>
                       )}
@@ -1808,7 +1825,7 @@ export function showCustomUI(player) {
                             {el.props.text || el.name} (
                             {el.props.sliderDefault || "0"})
                           </div>
-                          <div className="w-full h-2 bg-[#1E1E20] border border-[#111112] rounded-full relative shadow-inner">
+                          <div className="w-full h-2 bg-[#1E1E20] border border-zinc-800 rounded-full relative shadow-inner">
                             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-5 bg-[#3C3D3F] hover:bg-[#5A5B5D] border border-white rounded-sm" />
                             <div className="absolute top-0 left-0 w-1/2 h-full bg-[#5A8F43] rounded-l-full pointer-events-none" />
                           </div>
@@ -1816,7 +1833,7 @@ export function showCustomUI(player) {
                       )}
                       {el.type === "toggle" && (
                         <>
-                          <div className="w-10 h-5 border border-[#111112] bg-[#1E1E20] rounded-full flex items-center p-0.5 shadow-inner">
+                          <div className="w-10 h-5 border border-zinc-800 bg-[#1E1E20] rounded-full flex items-center p-0.5 shadow-inner">
                             {el.props.toggleDefault === "true" ? (
                               <div className="w-9 h-full flex justify-end">
                                 <div className="w-4 h-full bg-[#5A8F43] rounded-full shadow-sm" />
@@ -1856,23 +1873,23 @@ export function showCustomUI(player) {
               </div>
 
               <div className="absolute bottom-4 left-4 flex gap-4 pointer-events-none">
-                <div className="text-xs text-white uppercase tracking-wider font-sans bg-[#1E1E20]/90 border border-[#111112] px-3 py-1.5 rounded-sm shadow-md backdrop-blur">
+                <div className="text-xs text-white uppercase tracking-wider font-sans bg-zinc-900/90 border border-zinc-800 px-3 py-1.5 rounded-sm shadow-md backdrop-blur">
                   Preview: Ore UI (1.21+)
                 </div>
-                <div className="text-xs text-white uppercase tracking-wider font-sans bg-[#1E1E20]/90 border border-[#111112] px-3 py-1.5 rounded-sm shadow-md backdrop-blur">
+                <div className="text-xs text-white uppercase tracking-wider font-sans bg-zinc-900/90 border border-zinc-800 px-3 py-1.5 rounded-sm shadow-md backdrop-blur">
                   Snap to Grid: 10px
                 </div>
               </div>
             </main>
 
-            <aside className="w-72 border-l border-[#333] bg-[#212121] flex flex-col shrink-0">
-              <div className="p-3 border-b border-[#333] bg-[#252525]">
+            <aside className="w-72 border-l border-zinc-800 bg-zinc-900 flex flex-col shrink-0 shadow-xl z-20">
+              <div className="p-3 border-b border-zinc-800 bg-zinc-900 sticky top-0">
                 <div className="text-[11px] font-bold text-white flex items-center justify-between uppercase">
-                  <span className="flex items-center gap-1">
+                  <span className="flex items-center gap-1.5 text-zinc-300">
                     <Settings2 className="w-3 h-3" /> Properties
                   </span>
                   {selectedId && (
-                    <span className="text-[#666] text-[9px] lowercase font-mono">
+                    <span className="text-zinc-500 text-[9px] lowercase font-mono">
                       #{selectedId}
                     </span>
                   )}
@@ -1881,7 +1898,7 @@ export function showCustomUI(player) {
 
               <div className="p-4 flex flex-col gap-5 overflow-y-auto custom-scrollbar">
                 {!selectedId ? (
-                  <div className="text-[#666] text-xs text-center mt-10 italic">
+                  <div className="text-zinc-500 text-xs text-center mt-10 italic">
                     Select an element to view properties
                   </div>
                 ) : (
@@ -1889,11 +1906,11 @@ export function showCustomUI(player) {
                     <>
                       {/* Identification */}
                       <div className="flex flex-col gap-2">
-                        <span className="text-[10px] font-bold text-[#666] uppercase">
+                        <span className="text-[10px] font-bold text-zinc-500 uppercase">
                           Identification
                         </span>
                         <div className="flex flex-col gap-1">
-                          <label className="text-[9px] text-[#888]">
+                          <label className="text-[9px] text-zinc-500">
                             Element Name
                           </label>
                           <input
@@ -1908,25 +1925,25 @@ export function showCustomUI(player) {
                                 ),
                               );
                             }}
-                            className="bg-[#111] border border-[#333] rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono transition-colors"
+                            className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono transition-colors"
                           />
                         </div>
                       </div>
 
-                      <div className="h-[1px] bg-[#333] w-full" />
+                      <div className="h-[1px] bg-zinc-800 w-full" />
 
                       {/* Geometry */}
                       <div className="flex flex-col gap-2">
-                        <span className="text-[10px] font-bold text-[#666] uppercase">
+                        <span className="text-[10px] font-bold text-zinc-500 uppercase">
                           Geometry & Position
                         </span>
                         <div className="grid grid-cols-2 gap-3 mb-2">
                           <div className="flex flex-col gap-1">
-                            <label className="text-[9px] text-[#888]">
+                            <label className="text-[9px] text-zinc-500">
                               X Position (px)
                             </label>
-                            <div className="flex bg-[#111] border border-[#333] rounded overflow-hidden focus-within:border-blue-500 transition-colors">
-                              <span className="text-[10px] text-[#555] px-2 py-1.5 bg-[#1a1a1a] border-r border-[#333]">
+                            <div className="flex bg-zinc-950 border border-zinc-800 rounded overflow-hidden focus-within:border-blue-500 transition-colors">
+                              <span className="text-[10px] text-[#555] px-2 py-1.5 bg-zinc-950 border-r border-zinc-800">
                                 X
                               </span>
                               <input
@@ -1938,11 +1955,11 @@ export function showCustomUI(player) {
                             </div>
                           </div>
                           <div className="flex flex-col gap-1">
-                            <label className="text-[9px] text-[#888]">
+                            <label className="text-[9px] text-zinc-500">
                               Y Position (px)
                             </label>
-                            <div className="flex bg-[#111] border border-[#333] rounded overflow-hidden focus-within:border-blue-500 transition-colors">
-                              <span className="text-[10px] text-[#555] px-2 py-1.5 bg-[#1a1a1a] border-r border-[#333]">
+                            <div className="flex bg-zinc-950 border border-zinc-800 rounded overflow-hidden focus-within:border-blue-500 transition-colors">
+                              <span className="text-[10px] text-[#555] px-2 py-1.5 bg-zinc-950 border-r border-zinc-800">
                                 Y
                               </span>
                               <input
@@ -1956,11 +1973,11 @@ export function showCustomUI(player) {
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                           <div className="flex flex-col gap-1">
-                            <label className="text-[9px] text-[#888]">
+                            <label className="text-[9px] text-zinc-500">
                               Width (px)
                             </label>
-                            <div className="flex bg-[#111] border border-[#333] rounded overflow-hidden focus-within:border-blue-500 transition-colors">
-                              <span className="text-[10px] text-[#555] px-2 py-1.5 bg-[#1a1a1a] border-r border-[#333]">
+                            <div className="flex bg-zinc-950 border border-zinc-800 rounded overflow-hidden focus-within:border-blue-500 transition-colors">
+                              <span className="text-[10px] text-[#555] px-2 py-1.5 bg-zinc-950 border-r border-zinc-800">
                                 W
                               </span>
                               <input
@@ -1977,11 +1994,11 @@ export function showCustomUI(player) {
                             </div>
                           </div>
                           <div className="flex flex-col gap-1">
-                            <label className="text-[9px] text-[#888]">
+                            <label className="text-[9px] text-zinc-500">
                               Height (px)
                             </label>
-                            <div className="flex bg-[#111] border border-[#333] rounded overflow-hidden focus-within:border-blue-500 transition-colors">
-                              <span className="text-[10px] text-[#555] px-2 py-1.5 bg-[#1a1a1a] border-r border-[#333]">
+                            <div className="flex bg-zinc-950 border border-zinc-800 rounded overflow-hidden focus-within:border-blue-500 transition-colors">
+                              <span className="text-[10px] text-[#555] px-2 py-1.5 bg-zinc-950 border-r border-zinc-800">
                                 H
                               </span>
                               <input
@@ -2000,7 +2017,7 @@ export function showCustomUI(player) {
                         </div>
                       </div>
 
-                      <div className="h-[1px] bg-[#333] w-full" />
+                      <div className="h-[1px] bg-zinc-800 w-full" />
 
                       {(selectedElement.type === "label" ||
                         selectedElement.type === "button" ||
@@ -2008,11 +2025,11 @@ export function showCustomUI(player) {
                           selectedElement.type,
                         )) && (
                         <div className="flex flex-col gap-2">
-                          <span className="text-[10px] font-bold text-[#666] uppercase">
+                          <span className="text-[10px] font-bold text-zinc-500 uppercase">
                             Text Content
                           </span>
                           <div className="flex flex-col gap-1">
-                            <label className="text-[9px] text-[#888]">
+                            <label className="text-[9px] text-zinc-500">
                               Label / Button Text
                             </label>
                             <input
@@ -2021,13 +2038,13 @@ export function showCustomUI(player) {
                               onChange={(e) =>
                                 updateSelectedProp("text", e.target.value)
                               }
-                              className="bg-[#111] border border-[#333] rounded px-2 py-1.5 text-[11px] outline-none text-green-400 focus:border-green-500 font-mono transition-colors w-full"
+                              className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-green-400 focus:border-green-500 font-mono transition-colors w-full"
                             />
                           </div>
 
                           {selectedElement.type === "dropdown" && (
                             <div className="flex flex-col gap-1 mt-1">
-                              <label className="text-[9px] text-[#888]">
+                              <label className="text-[9px] text-zinc-500">
                                 Options (comma separated)
                               </label>
                               <input
@@ -2043,9 +2060,9 @@ export function showCustomUI(player) {
                                   )
                                 }
                                 placeholder="Item 1, Item 2, Item 3"
-                                className="bg-[#111] border border-[#333] rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+                                className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
                               />
-                              <label className="text-[9px] text-[#888] mt-1">
+                              <label className="text-[9px] text-zinc-500 mt-1">
                                 Default Selected Index
                               </label>
                               <input
@@ -2059,7 +2076,7 @@ export function showCustomUI(player) {
                                     e.target.value,
                                   )
                                 }
-                                className="bg-[#111] border border-[#333] rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+                                className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
                               />
                             </div>
                           )}
@@ -2067,7 +2084,7 @@ export function showCustomUI(player) {
                           {selectedElement.type === "slider" && (
                             <div className="grid grid-cols-2 gap-2 mt-1">
                               <div className="flex flex-col gap-1">
-                                <label className="text-[9px] text-[#888]">
+                                <label className="text-[9px] text-zinc-500">
                                   Min Value
                                 </label>
                                 <input
@@ -2079,11 +2096,11 @@ export function showCustomUI(player) {
                                       e.target.value,
                                     )
                                   }
-                                  className="bg-[#111] border border-[#333] rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+                                  className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
                                 />
                               </div>
                               <div className="flex flex-col gap-1">
-                                <label className="text-[9px] text-[#888]">
+                                <label className="text-[9px] text-zinc-500">
                                   Max Value
                                 </label>
                                 <input
@@ -2097,11 +2114,11 @@ export function showCustomUI(player) {
                                       e.target.value,
                                     )
                                   }
-                                  className="bg-[#111] border border-[#333] rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+                                  className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
                                 />
                               </div>
                               <div className="flex flex-col gap-1">
-                                <label className="text-[9px] text-[#888]">
+                                <label className="text-[9px] text-zinc-500">
                                   Step Size
                                 </label>
                                 <input
@@ -2115,11 +2132,11 @@ export function showCustomUI(player) {
                                       e.target.value,
                                     )
                                   }
-                                  className="bg-[#111] border border-[#333] rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+                                  className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
                                 />
                               </div>
                               <div className="flex flex-col gap-1">
-                                <label className="text-[9px] text-[#888]">
+                                <label className="text-[9px] text-zinc-500">
                                   Default Value
                                 </label>
                                 <input
@@ -2133,7 +2150,7 @@ export function showCustomUI(player) {
                                       e.target.value,
                                     )
                                   }
-                                  className="bg-[#111] border border-[#333] rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+                                  className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
                                 />
                               </div>
                             </div>
@@ -2141,7 +2158,7 @@ export function showCustomUI(player) {
 
                           {selectedElement.type === "textfield" && (
                             <div className="flex flex-col gap-1 mt-1">
-                              <label className="text-[9px] text-[#888]">
+                              <label className="text-[9px] text-zinc-500">
                                 Placeholder Text
                               </label>
                               <input
@@ -2156,9 +2173,9 @@ export function showCustomUI(player) {
                                     e.target.value,
                                   )
                                 }
-                                className="bg-[#111] border border-[#333] rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+                                className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
                               />
-                              <label className="text-[9px] text-[#888] mt-1">
+                              <label className="text-[9px] text-zinc-500 mt-1">
                                 Default Value
                               </label>
                               <input
@@ -2172,9 +2189,9 @@ export function showCustomUI(player) {
                                     e.target.value,
                                   )
                                 }
-                                className="bg-[#111] border border-[#333] rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+                                className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
                               />
-                              <label className="text-[9px] text-[#888] mt-1 text-green-400">
+                              <label className="text-[9px] text-zinc-500 mt-1 text-green-400">
                                 Correct Answer (Trigger Actions)
                               </label>
                               <input
@@ -2189,14 +2206,14 @@ export function showCustomUI(player) {
                                   )
                                 }
                                 placeholder="Case sensitive string..."
-                                className="bg-[#111] border border-green-900 rounded px-2 py-1.5 text-[11px] outline-none text-green-400 focus:border-green-500 font-mono w-full"
+                                className="bg-zinc-950 border border-green-900 rounded px-2 py-1.5 text-[11px] outline-none text-green-400 focus:border-green-500 font-mono w-full"
                               />
                             </div>
                           )}
 
                           {selectedElement.type === "toggle" && (
                             <div className="flex flex-col gap-1 mt-1">
-                              <label className="text-[9px] text-[#888]">
+                              <label className="text-[9px] text-zinc-500">
                                 Default State
                               </label>
                               <select
@@ -2209,7 +2226,7 @@ export function showCustomUI(player) {
                                     e.target.value,
                                   )
                                 }
-                                className="bg-[#111] border border-[#333] rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+                                className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
                               >
                                 <option value="false">Unchecked</option>
                                 <option value="true">Checked</option>
@@ -2221,8 +2238,8 @@ export function showCustomUI(player) {
 
                       {selectedElement.type === "label" &&
                         variables.length > 0 && (
-                          <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-[#333]">
-                            <span className="text-[10px] font-bold text-[#666] uppercase">
+                          <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-zinc-800">
+                            <span className="text-[10px] font-bold text-zinc-500 uppercase">
                               Bind to Variable (optional)
                             </span>
                             <select
@@ -2233,7 +2250,7 @@ export function showCustomUI(player) {
                                   e.target.value,
                                 )
                               }
-                              className="bg-[#111] border border-[#333] text-xs text-white rounded p-1.5 focus:border-[#3498db] outline-none"
+                              className="bg-zinc-950 border border-zinc-800 text-xs text-white rounded p-1.5 focus:border-[#3498db] outline-none"
                             >
                               <option value="">None</option>
                               {variables.map((v) => (
@@ -2249,9 +2266,9 @@ export function showCustomUI(player) {
                         selectedElement.type,
                       ) &&
                         variables.length > 0 && (
-                          <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-[#333]">
+                          <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-zinc-800">
                             <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-bold text-[#666] uppercase">
+                              <span className="text-[10px] font-bold text-zinc-500 uppercase">
                                 {selectedElement.type === "player_picker"
                                   ? "Action on Executor"
                                   : "Variable Modifiers"}
@@ -2288,7 +2305,7 @@ export function showCustomUI(player) {
                                 (act, idx) => (
                                   <div
                                     key={idx}
-                                    className="flex flex-col gap-1 bg-[#111] p-1.5 rounded border border-[#333]"
+                                    className="flex flex-col gap-1 bg-zinc-950 p-1.5 rounded border border-zinc-800"
                                   >
                                     <div className="flex gap-1 items-center">
                                       <select
@@ -2310,7 +2327,7 @@ export function showCustomUI(player) {
                                             ),
                                           );
                                         }}
-                                        className="bg-[#222] border border-[#444] text-[10px] text-white rounded p-1 flex-1"
+                                        className="bg-zinc-900 border border-zinc-700 text-[10px] text-white rounded p-1 flex-1"
                                       >
                                         {variables.map((v) => (
                                           <option key={v.id} value={v.id}>
@@ -2318,7 +2335,7 @@ export function showCustomUI(player) {
                                           </option>
                                         ))}
                                       </select>
-                                      <span className="text-[#888] text-[10px] font-bold">
+                                      <span className="text-zinc-500 text-[10px] font-bold">
                                         +
                                       </span>
                                       <input
@@ -2347,7 +2364,7 @@ export function showCustomUI(player) {
                                             ),
                                           );
                                         }}
-                                        className="bg-[#222] border border-[#444] text-[10px] text-white rounded p-1 w-12 text-center"
+                                        className="bg-zinc-900 border border-zinc-700 text-[10px] text-white rounded p-1 w-12 text-center"
                                       />
                                       <button
                                         onClick={() => {
@@ -2395,7 +2412,7 @@ export function showCustomUI(player) {
                                         }}
                                         className="accent-[#3498db]"
                                       />
-                                      <span className="text-[9px] text-[#aaa]">
+                                      <span className="text-[9px] text-zinc-400">
                                         Required (Fail if exceeded condition)
                                       </span>
                                     </label>
@@ -2406,7 +2423,7 @@ export function showCustomUI(player) {
 
                             {selectedElement.type === "player_picker" && (
                               <>
-                                <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#333]">
+                                <div className="flex items-center justify-between mt-2 pt-2 border-t border-zinc-800">
                                   <span className="text-[10px] font-bold text-orange-400 uppercase">
                                     Action on Target
                                   </span>
@@ -2443,7 +2460,7 @@ export function showCustomUI(player) {
                                     (act, idx) => (
                                       <div
                                         key={idx}
-                                        className="flex flex-col gap-1 bg-[#111] p-1.5 rounded border border-[#5a3a14]"
+                                        className="flex flex-col gap-1 bg-zinc-950 p-1.5 rounded border border-[#5a3a14]"
                                       >
                                         <div className="flex gap-1 items-center">
                                           <select
@@ -2474,7 +2491,7 @@ export function showCustomUI(player) {
                                               </option>
                                             ))}
                                           </select>
-                                          <span className="text-[#888] text-[10px] font-bold">
+                                          <span className="text-zinc-500 text-[10px] font-bold">
                                             +
                                           </span>
                                           <input
@@ -2542,11 +2559,11 @@ export function showCustomUI(player) {
                         selectedElement.type,
                       ) && (
                         <div className="flex flex-col gap-2">
-                          <span className="text-[10px] font-bold text-[#666] uppercase">
+                          <span className="text-[10px] font-bold text-zinc-500 uppercase">
                             Texture Settings
                           </span>
                           <div className="flex flex-col gap-1 mb-2">
-                            <label className="text-[9px] text-[#888]">
+                            <label className="text-[9px] text-zinc-500">
                               Bedrock Texture Path
                             </label>
                             <input
@@ -2556,14 +2573,14 @@ export function showCustomUI(player) {
                                 updateSelectedProp("texture", e.target.value)
                               }
                               placeholder="textures/ui/..."
-                              className="bg-[#111] border border-[#333] rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono transition-colors w-full"
+                              className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono transition-colors w-full"
                             />
                           </div>
                           <div className="flex flex-col gap-1">
-                            <label className="text-[9px] text-[#888]">
+                            <label className="text-[9px] text-zinc-500">
                               Local Preview Image
                             </label>
-                            <label className="cursor-pointer bg-[#333] border border-[#444] rounded px-2 py-1.5 text-[11px] text-center text-[#aaa] hover:bg-[#3a3a3a] hover:text-white transition-colors flex items-center justify-center gap-2">
+                            <label className="cursor-pointer bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-center text-zinc-400 hover:bg-zinc-700 hover:text-white transition-colors flex items-center justify-center gap-2">
                               <Upload className="w-3.5 h-3.5" />
                               {selectedElement.props.previewImage
                                 ? "Change Image..."
@@ -2610,7 +2627,7 @@ export function showCustomUI(player) {
                       )}
 
                       {/* AI Logic Generator Box */}
-                      <div className="h-[1px] bg-[#333] w-full" />
+                      <div className="h-[1px] bg-zinc-800 w-full" />
                       <div className="flex flex-col gap-2">
                         <div className="flex items-center gap-1.5 text-[#3498db]">
                           <Wand2 className="w-3.5 h-3.5" />
@@ -2618,7 +2635,7 @@ export function showCustomUI(player) {
                             AI Event Builder
                           </span>
                         </div>
-                        <p className="text-[9px] text-[#777] leading-tight">
+                        <p className="text-[9px] text-zinc-400 leading-tight">
                           Describe what this element should do. AI will generate
                           the Bedrock JSON logic bindings.
                         </p>
@@ -2626,7 +2643,7 @@ export function showCustomUI(player) {
                           value={aiPrompt}
                           onChange={(e) => setAiPrompt(e.target.value)}
                           placeholder="e.g., Increase player strength by 1 when clicked... or show player health amount"
-                          className="bg-[#111] border border-[#333] rounded p-2 text-[11px] outline-none text-white focus:border-blue-500 font-sans transition-colors resize-none h-16 w-full"
+                          className="bg-zinc-950 border border-zinc-800 rounded p-2 text-[11px] outline-none text-white focus:border-blue-500 font-sans transition-colors resize-none h-16 w-full"
                         />
                         <button
                           onClick={handleGenerateLogic}
@@ -2645,17 +2662,17 @@ export function showCustomUI(player) {
                       </div>
 
                       {/* JSON Context */}
-                      <div className="h-[1px] bg-[#333] w-full" />
+                      <div className="h-[1px] bg-zinc-800 w-full" />
                       <div className="flex flex-col gap-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-[#666] uppercase">
+                          <span className="text-[10px] font-bold text-zinc-500 uppercase">
                             JSON Context
                           </span>
-                          <span className="text-[8px] bg-[#333] px-1 py-0.5 rounded text-[#aaa]">
+                          <span className="text-[8px] bg-zinc-800 px-1 py-0.5 rounded text-zinc-400">
                             Generated
                           </span>
                         </div>
-                        <div className="bg-[#111] border border-[#333] p-2.5 rounded h-32 font-mono text-[10px] text-[#aaa] overflow-auto whitespace-pre leading-relaxed shadow-inner custom-scrollbar relative w-full">
+                        <div className="bg-zinc-950 border border-zinc-800 p-2.5 rounded h-32 font-mono text-[10px] text-zinc-400 overflow-auto whitespace-pre leading-relaxed shadow-inner custom-scrollbar relative w-full">
                           <span className="text-blue-400">
                             "
                             {selectedElement.name
@@ -2829,7 +2846,7 @@ export function showCustomUI(player) {
                           ) : (
                             <>
                               &nbsp;&nbsp;
-                              <span className="text-[#666] italic">
+                              <span className="text-zinc-500 italic">
                                 // Use AI Box above to generate logic...
                               </span>
                               \n
@@ -2840,13 +2857,8 @@ export function showCustomUI(player) {
                       </div>
 
                       <button
-                        onClick={() => {
-                          setElements((prev) =>
-                            prev.filter((e) => e.id !== selectedId),
-                          );
-                          setSelectedId(null);
-                        }}
-                        className="mt-4 w-full py-2 bg-[#4a1f1f] border border-[#ff4a4a] text-[#ffbaba] rounded text-[10px] uppercase font-bold hover:bg-[#662020] transition-colors"
+                        onClick={() => handleDeleteElement(selectedId)}
+                        className="mt-4 w-full py-2 bg-red-950/50 border border-red-500/30 text-red-400 rounded text-[10px] uppercase font-bold hover:bg-red-900/50 hover:text-red-300 transition-colors"
                       >
                         Delete Element
                       </button>
@@ -2857,14 +2869,14 @@ export function showCustomUI(player) {
             </aside>
           </>
         ) : viewMode === "variables" ? (
-          <div className="flex-1 overflow-auto bg-[#1a1a1a]">
+          <div className="flex-1 overflow-auto bg-zinc-950">
             <div className="p-6 flex flex-col gap-6">
-              <div className="flex justify-between items-center bg-[#222] p-4 rounded border border-[#333]">
+              <div className="flex justify-between items-center bg-zinc-900 p-4 rounded border border-zinc-800">
                 <div>
                   <h3 className="text-lg font-bold text-white uppercase tracking-wider">
                     Dynamic Variables
                   </h3>
-                  <p className="text-xs text-[#888]">
+                  <p className="text-xs text-zinc-500">
                     Track global and player-specific stats using Bedrock Dynamic
                     Properties.
                   </p>
@@ -2889,12 +2901,12 @@ export function showCustomUI(player) {
                 </button>
               </div>
 
-              <div className="bg-[#111] border border-[#333] rounded p-4 flex flex-col gap-2">
+              <div className="bg-zinc-950 border border-zinc-800 rounded p-4 flex flex-col gap-2">
                 <h4 className="text-xs font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500 flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-purple-400" /> AI Variable
                   Settings
                 </h4>
-                <p className="text-[10px] text-[#888]">
+                <p className="text-[10px] text-zinc-500">
                   Describe a stat or variable to track (e.g., "tracks blocks
                   broken", "tracks x axis position", "mana").
                 </p>
@@ -2904,7 +2916,7 @@ export function showCustomUI(player) {
                     value={aiVarPrompt}
                     onChange={(e) => setAiVarPrompt(e.target.value)}
                     placeholder="E.g., Track how many times player jumps..."
-                    className="bg-[#222] border border-[#444] rounded px-3 py-1.5 text-xs text-white outline-none flex-1 focus:border-purple-500"
+                    className="bg-zinc-900 border border-zinc-700 rounded px-3 py-1.5 text-xs text-white outline-none flex-1 focus:border-purple-500"
                   />
                   <button
                     onClick={handleGenerateVariable}
@@ -2924,7 +2936,7 @@ export function showCustomUI(player) {
               </div>
 
               {variables.length === 0 && (
-                <div className="text-center py-12 text-[#666] font-mono text-sm border border-dashed border-[#444] rounded">
+                <div className="text-center py-12 text-zinc-500 font-mono text-sm border border-dashed border-zinc-700 rounded">
                   No variables defined yet. Creating variables will let you
                   track counts when events happen in-game.
                 </div>
@@ -2933,9 +2945,9 @@ export function showCustomUI(player) {
               {variables.map((v, i) => (
                 <div
                   key={v.id}
-                  className="bg-[#212121] border border-[#333] rounded overflow-hidden"
+                  className="bg-zinc-900 border border-zinc-800 rounded overflow-hidden"
                 >
-                  <div className="bg-[#2a2a2a] p-3 border-b flex items-center justify-between border-[#333]">
+                  <div className="bg-[#2a2a2a] p-3 border-b flex items-center justify-between border-zinc-800">
                     <div className="flex items-center gap-4">
                       <select
                         value={v.scope}
@@ -2946,7 +2958,7 @@ export function showCustomUI(player) {
                             | "global";
                           setVariables(newVars);
                         }}
-                        className="bg-[#111] border border-[#444] text-xs text-white rounded outline-none p-1.5 focus:border-[#007acc]"
+                        className="bg-zinc-950 border border-zinc-700 text-xs text-white rounded outline-none p-1.5 focus:border-[#007acc]"
                       >
                         <option value="player">Player Variable</option>
                         <option value="global">Global Variable</option>
@@ -2975,13 +2987,13 @@ export function showCustomUI(player) {
                     {/* Min Max constraints */}
                     <div className="flex gap-4">
                       <div className="flex flex-col gap-1">
-                        <label className="text-[10px] font-bold text-[#888] uppercase">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">
                           Minimum Value
                         </label>
                         <input
                           type="number"
                           value={v.min ?? ""}
-                          className="bg-[#111] border border-[#333] p-1.5 rounded text-white font-mono text-sm w-24"
+                          className="bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-mono text-sm w-24"
                           onChange={(e) => {
                             const newVars = [...variables];
                             newVars[i].min = e.target.value
@@ -2992,13 +3004,13 @@ export function showCustomUI(player) {
                         />
                       </div>
                       <div className="flex flex-col gap-1">
-                        <label className="text-[10px] font-bold text-[#888] uppercase">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">
                           Maximum Value (Optional)
                         </label>
                         <input
                           type="number"
                           value={v.max ?? ""}
-                          className="bg-[#111] border border-[#333] p-1.5 rounded text-white font-mono text-sm w-24"
+                          className="bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-mono text-sm w-24"
                           onChange={(e) => {
                             const newVars = [...variables];
                             newVars[i].max = e.target.value
@@ -3013,7 +3025,7 @@ export function showCustomUI(player) {
                     {/* Increments */}
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <label className="text-[10px] font-bold text-[#888] uppercase">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">
                           Triggers (Increment when...)
                         </label>
                         <button
@@ -3046,7 +3058,7 @@ export function showCustomUI(player) {
                                     e.target.value;
                                   setVariables(newVars);
                                 }}
-                                className="bg-[#111] border border-[#333] text-xs p-1.5 rounded text-white outline-none focus:border-[#007acc] flex-1"
+                                className="bg-zinc-950 border border-zinc-800 text-xs p-1.5 rounded text-white outline-none focus:border-[#007acc] flex-1"
                               >
                                 {MC_EVENTS.map((evt) => (
                                   <option key={evt} value={evt}>
@@ -3066,7 +3078,7 @@ export function showCustomUI(player) {
                                     parseFloat(e.target.value);
                                   setVariables(newVars);
                                 }}
-                                className="bg-[#111] border border-[#333] p-1 text-white font-mono text-sm rounded w-16"
+                                className="bg-zinc-950 border border-zinc-800 p-1 text-white font-mono text-sm rounded w-16"
                               />
                               <button
                                 onClick={() => {
@@ -3091,9 +3103,9 @@ export function showCustomUI(player) {
                                       e.target.value;
                                     setVariables(newVars);
                                   }}
-                                  className="bg-[#111] border border-[#333] p-1 text-white font-mono text-xs rounded w-32 outline-none focus:border-[#007acc]"
+                                  className="bg-zinc-950 border border-zinc-800 p-1 text-white font-mono text-xs rounded w-32 outline-none focus:border-[#007acc]"
                                 />
-                                <label className="flex items-center gap-1.5 text-xs text-[#aaa]">
+                                <label className="flex items-center gap-1.5 text-xs text-zinc-400">
                                   <input
                                     type="checkbox"
                                     checked={!!inc.destroyItemOnUse}
@@ -3122,12 +3134,12 @@ export function showCustomUI(player) {
         ) : viewMode === "triggers" ? (
           <div className="flex-1 overflow-auto bg-[#1e1e1e]">
             <div className="p-6 flex flex-col gap-6">
-              <div className="flex justify-between items-center bg-[#252526] py-3 px-4 rounded border border-[#333]">
+              <div className="flex justify-between items-center bg-[#252526] py-3 px-4 rounded border border-zinc-800">
                 <div>
                   <h2 className="text-white font-bold text-lg">
                     Custom Script Triggers
                   </h2>
-                  <p className="text-[#aaa] text-xs">
+                  <p className="text-zinc-400 text-xs">
                     Since GUI is set to Hidden, choose events to open your GUI
                     code.
                   </p>
@@ -3148,9 +3160,9 @@ export function showCustomUI(player) {
               {customTriggers.map((trigger, i) => (
                 <div
                   key={trigger.id}
-                  className="bg-[#252526] border border-[#333] rounded"
+                  className="bg-[#252526] border border-zinc-800 rounded"
                 >
-                  <div className="bg-[#2a2d2e] p-3 border-b border-[#333] flex justify-between items-center rounded-t">
+                  <div className="bg-[#2a2d2e] p-3 border-b border-zinc-800 flex justify-between items-center rounded-t">
                     <span className="text-white font-bold text-sm tracking-wide">
                       Trigger #{i + 1}
                     </span>
@@ -3168,7 +3180,7 @@ export function showCustomUI(player) {
                   <div className="p-4 flex flex-col gap-4">
                     <div className="flex gap-4 items-end">
                       <div className="flex flex-col gap-1.5 flex-1">
-                        <label className="text-[10px] uppercase font-bold text-[#888] tracking-wider">
+                        <label className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">
                           Trigger Event
                         </label>
                         <select
@@ -3178,7 +3190,7 @@ export function showCustomUI(player) {
                             newTriggers[i].type = e.target.value as any;
                             setCustomTriggers(newTriggers);
                           }}
-                          className="bg-[#111] border border-[#333] px-3 py-2 text-white text-sm outline-none rounded"
+                          className="bg-zinc-950 border border-zinc-800 px-3 py-2 text-white text-sm outline-none rounded"
                         >
                           <option value="itemUse">
                             Using an Item in Hand (Right Click)
@@ -3200,7 +3212,7 @@ export function showCustomUI(player) {
                       <div className="flex flex-col gap-1.5 flex-1 w-full">
                         {trigger.type === "itemUse" && (
                           <>
-                            <label className="text-[10px] uppercase font-bold text-[#888] tracking-wider">
+                            <label className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">
                               Item ID
                             </label>
                             <input
@@ -3212,13 +3224,13 @@ export function showCustomUI(player) {
                                 newTriggers[i].config.itemId = e.target.value;
                                 setCustomTriggers(newTriggers);
                               }}
-                              className="bg-[#111] border border-[#333] px-3 py-2 text-white text-sm outline-none rounded font-mono"
+                              className="bg-zinc-950 border border-zinc-800 px-3 py-2 text-white text-sm outline-none rounded font-mono"
                             />
                           </>
                         )}
                         {trigger.type === "blockBreak" && (
                           <>
-                            <label className="text-[10px] uppercase font-bold text-[#888] tracking-wider">
+                            <label className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">
                               Block ID
                             </label>
                             <input
@@ -3230,13 +3242,13 @@ export function showCustomUI(player) {
                                 newTriggers[i].config.blockId = e.target.value;
                                 setCustomTriggers(newTriggers);
                               }}
-                              className="bg-[#111] border border-[#333] px-3 py-2 text-white text-sm outline-none rounded font-mono"
+                              className="bg-zinc-950 border border-zinc-800 px-3 py-2 text-white text-sm outline-none rounded font-mono"
                             />
                           </>
                         )}
                         {trigger.type === "entityHit" && (
                           <>
-                            <label className="text-[10px] uppercase font-bold text-[#888] tracking-wider">
+                            <label className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">
                               Entity ID
                             </label>
                             <input
@@ -3248,13 +3260,13 @@ export function showCustomUI(player) {
                                 newTriggers[i].config.entityId = e.target.value;
                                 setCustomTriggers(newTriggers);
                               }}
-                              className="bg-[#111] border border-[#333] px-3 py-2 text-white text-sm outline-none rounded font-mono"
+                              className="bg-zinc-950 border border-zinc-800 px-3 py-2 text-white text-sm outline-none rounded font-mono"
                             />
                           </>
                         )}
                         {trigger.type === "chatCommand" && (
                           <>
-                            <label className="text-[10px] uppercase font-bold text-[#888] tracking-wider">
+                            <label className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">
                               Chat Command
                             </label>
                             <input
@@ -3266,7 +3278,7 @@ export function showCustomUI(player) {
                                 newTriggers[i].config.command = e.target.value;
                                 setCustomTriggers(newTriggers);
                               }}
-                              className="bg-[#111] border border-[#333] px-3 py-2 text-white text-sm outline-none rounded font-mono"
+                              className="bg-zinc-950 border border-zinc-800 px-3 py-2 text-white text-sm outline-none rounded font-mono"
                             />
                           </>
                         )}
@@ -3283,7 +3295,7 @@ export function showCustomUI(player) {
                                 newTriggers[i].config.prompt = e.target.value;
                                 setCustomTriggers(newTriggers);
                               }}
-                              className="bg-[#111] border border-blue-900 px-3 py-2 text-white text-sm outline-none rounded min-h-[60px]"
+                              className="bg-zinc-950 border border-blue-900 px-3 py-2 text-white text-sm outline-none rounded min-h-[60px]"
                             />
                             <button
                               className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-1.5 px-3 rounded text-xs transition-colors"
@@ -3321,13 +3333,13 @@ export function showCustomUI(player) {
                             </button>
                             {trigger.config.code && (
                               <div className="mt-2">
-                                <label className="text-[10px] uppercase font-bold text-[#888] tracking-wider">
+                                <label className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">
                                   Generated Code
                                 </label>
                                 <textarea
                                   readOnly
                                   value={trigger.config.code}
-                                  className="w-full bg-[#1e1e1e] border border-[#333] px-2 py-1 text-green-400 text-[11px] font-mono rounded min-h-[100px] mt-1 custom-scrollbar"
+                                  className="w-full bg-[#1e1e1e] border border-zinc-800 px-2 py-1 text-green-400 text-[11px] font-mono rounded min-h-[100px] mt-1 custom-scrollbar"
                                 ></textarea>
                               </div>
                             )}
@@ -3343,26 +3355,26 @@ export function showCustomUI(player) {
         ) : (
           /* Export / Code Mode */
           <div className="flex w-full h-full">
-            <aside className="w-64 border-r border-[#333] bg-[#212121] flex flex-col shrink-0">
-              <div className="p-3 border-b border-[#333]">
-                <div className="text-[10px] font-bold text-[#888] uppercase tracking-wider flex items-center gap-2">
+            <aside className="w-64 border-r border-zinc-800 bg-zinc-900 flex flex-col shrink-0">
+              <div className="p-3 border-b border-zinc-800">
+                <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
                   <FolderOpen className="w-3.5 h-3.5" /> Bridge Workspace
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto p-2">
-                <div className="mt-2 mb-2 text-[10px] font-bold text-[#888] uppercase tracking-wider px-2">
+                <div className="mt-2 mb-2 text-[10px] font-bold text-zinc-500 uppercase tracking-wider px-2">
                   Behavior Pack
                 </div>
                 <div
                   onClick={() => setSelectedFile("BP/manifest.json")}
-                  className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === "BP/manifest.json" ? "bg-[#3498db]/20 text-blue-400" : "text-[#aaa] hover:bg-[#333]"}`}
+                  className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === "BP/manifest.json" ? "bg-[#3498db]/20 text-blue-400" : "text-zinc-400 hover:bg-zinc-800"}`}
                 >
                   <FileJson className="w-3.5 h-3.5 text-yellow-400" />
                   <span className="text-yellow-400">BP/manifest.json</span>
                 </div>
                 <div
                   onClick={() => setSelectedFile("BP/scripts/main.js")}
-                  className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === "BP/scripts/main.js" ? "bg-[#3498db]/20 text-blue-400" : "text-[#aaa] hover:bg-[#333]"}`}
+                  className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === "BP/scripts/main.js" ? "bg-[#3498db]/20 text-blue-400" : "text-zinc-400 hover:bg-zinc-800"}`}
                 >
                   <FileJson className="w-3.5 h-3.5 text-yellow-400" />
                   <span className="text-yellow-400">BP/scripts/main.js</span>
@@ -3372,7 +3384,7 @@ export function showCustomUI(player) {
                     onClick={() =>
                       setSelectedFile("BP/items/custom_gui_book.json")
                     }
-                    className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === "BP/items/custom_gui_book.json" ? "bg-[#3498db]/20 text-blue-400" : "text-[#aaa] hover:bg-[#333]"}`}
+                    className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === "BP/items/custom_gui_book.json" ? "bg-[#3498db]/20 text-blue-400" : "text-zinc-400 hover:bg-zinc-800"}`}
                   >
                     <FileJson className="w-3.5 h-3.5 text-yellow-400" />
                     <span className="text-yellow-400">
@@ -3381,12 +3393,12 @@ export function showCustomUI(player) {
                   </div>
                 )}
 
-                <div className="mt-4 mb-2 text-[10px] font-bold text-[#888] uppercase tracking-wider px-2">
+                <div className="mt-4 mb-2 text-[10px] font-bold text-zinc-500 uppercase tracking-wider px-2">
                   Resource Pack
                 </div>
                 <div
                   onClick={() => setSelectedFile("RP/manifest.json")}
-                  className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === "RP/manifest.json" ? "bg-[#3498db]/20 text-blue-400" : "text-[#aaa] hover:bg-[#333]"}`}
+                  className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === "RP/manifest.json" ? "bg-[#3498db]/20 text-blue-400" : "text-zinc-400 hover:bg-zinc-800"}`}
                 >
                   <FileJson className="w-3.5 h-3.5" />
                   <span>RP/manifest.json</span>
@@ -3397,7 +3409,7 @@ export function showCustomUI(player) {
                       onClick={() =>
                         setSelectedFile("RP/items/custom_gui_book.json")
                       }
-                      className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === "RP/items/custom_gui_book.json" ? "bg-[#3498db]/20 text-blue-400" : "text-[#aaa] hover:bg-[#333]"}`}
+                      className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === "RP/items/custom_gui_book.json" ? "bg-[#3498db]/20 text-blue-400" : "text-zinc-400 hover:bg-zinc-800"}`}
                     >
                       <FileJson className="w-3.5 h-3.5" />
                       <span>RP/items/custom_gui_book.json</span>
@@ -3406,7 +3418,7 @@ export function showCustomUI(player) {
                       onClick={() =>
                         setSelectedFile("RP/textures/item_texture.json")
                       }
-                      className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === "RP/textures/item_texture.json" ? "bg-[#3498db]/20 text-blue-400" : "text-[#aaa] hover:bg-[#333]"}`}
+                      className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === "RP/textures/item_texture.json" ? "bg-[#3498db]/20 text-blue-400" : "text-zinc-400 hover:bg-zinc-800"}`}
                     >
                       <FileJson className="w-3.5 h-3.5" />
                       <span>RP/textures/item_texture.json</span>
@@ -3415,13 +3427,13 @@ export function showCustomUI(player) {
                 )}
                 <div
                   onClick={() => setSelectedFile("RP/texts/en_US.lang")}
-                  className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === "RP/texts/en_US.lang" ? "bg-[#3498db]/20 text-blue-400" : "text-[#aaa] hover:bg-[#333]"}`}
+                  className={`p-2 rounded flex items-center gap-2 cursor-pointer text-xs ${selectedFile === "RP/texts/en_US.lang" ? "bg-[#3498db]/20 text-blue-400" : "text-zinc-400 hover:bg-zinc-800"}`}
                 >
                   <FileJson className="w-3.5 h-3.5" />
                   <span>RP/texts/en_US.lang</span>
                 </div>
               </div>
-              <div className="p-4 border-t border-[#333]">
+              <div className="p-4 border-t border-zinc-800">
                 <button
                   onClick={() => {
                     let text = "";
@@ -3499,15 +3511,15 @@ export function showCustomUI(player) {
                     navigator.clipboard.writeText(text);
                     alert(`Copied ${selectedFile} to clipboard!`);
                   }}
-                  className="w-full py-2 bg-[#333] hover:bg-[#444] text-white text-xs font-bold uppercase rounded transition-colors border border-[#555]"
+                  className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-bold uppercase rounded transition-colors border border-zinc-600"
                 >
                   Copy Current File
                 </button>
               </div>
             </aside>
             <main className="flex-1 bg-[#1e1e1e] flex flex-col overflow-hidden">
-              <div className="h-10 bg-[#252525] border-b border-[#333] flex items-center justify-between px-4 shrink-0">
-                <div className="text-[11px] font-mono text-[#888]">
+              <div className="h-10 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-4 shrink-0">
+                <div className="text-[11px] font-mono text-zinc-500">
                   {selectedFile}
                 </div>
 
@@ -3515,7 +3527,7 @@ export function showCustomUI(player) {
                   selectedFile,
                 ) && (
                   <div className="flex gap-4 items-center">
-                    <span className="text-[#888] text-[10px]">
+                    <span className="text-zinc-500 text-[10px]">
                       Note: You only need these files for a new mod. Try pasting
                       modules into your existing manifest.
                     </span>
@@ -3527,7 +3539,7 @@ export function showCustomUI(player) {
                         setRpUuid1(generateUUID());
                         setRpUuid2(generateUUID());
                       }}
-                      className="bg-[#333] hover:bg-[#444] text-[10px] text-white px-2 py-1 rounded transition-colors border border-[#555]"
+                      className="bg-zinc-800 hover:bg-zinc-700 text-[10px] text-white px-2 py-1 rounded transition-colors border border-zinc-600"
                     >
                       Regenerate UUIDs
                     </button>
@@ -3536,13 +3548,13 @@ export function showCustomUI(player) {
               </div>
 
               {selectedFile === "BP/manifest.json" && (
-                <div className="p-4 bg-[#252525] border-b border-[#333]">
-                  <label className="text-xs text-[#888] block mb-2 font-bold uppercase">
+                <div className="p-4 bg-zinc-900 border-b border-zinc-800">
+                  <label className="text-xs text-zinc-500 block mb-2 font-bold uppercase">
                     Base BP Manifest (Paste your un-modded manifest here to
                     inject scripts/dependencies)
                   </label>
                   <textarea
-                    className="w-full h-32 bg-[#111] border border-[#444] p-2 text-[#dcdcaa] font-mono text-[11px] outline-none rounded focus:border-[#3498db]"
+                    className="w-full h-32 bg-zinc-950 border border-zinc-700 p-2 text-[#dcdcaa] font-mono text-[11px] outline-none rounded focus:border-[#3498db]"
                     value={baseBPManifest}
                     onChange={(e) => setBaseBPManifest(e.target.value)}
                     placeholder="Paste your original behaviour pack manifest.json here..."
@@ -3550,12 +3562,12 @@ export function showCustomUI(player) {
                 </div>
               )}
               {selectedFile === "RP/manifest.json" && (
-                <div className="p-4 bg-[#252525] border-b border-[#333]">
-                  <label className="text-xs text-[#888] block mb-2 font-bold uppercase">
+                <div className="p-4 bg-zinc-900 border-b border-zinc-800">
+                  <label className="text-xs text-zinc-500 block mb-2 font-bold uppercase">
                     Base RP Manifest (Paste your un-modded manifest here)
                   </label>
                   <textarea
-                    className="w-full h-32 bg-[#111] border border-[#444] p-2 text-[#dcdcaa] font-mono text-[11px] outline-none rounded focus:border-[#3498db]"
+                    className="w-full h-32 bg-zinc-950 border border-zinc-700 p-2 text-[#dcdcaa] font-mono text-[11px] outline-none rounded focus:border-[#3498db]"
                     value={baseRPManifest}
                     onChange={(e) => setBaseRPManifest(e.target.value)}
                     placeholder="Paste your original resource pack manifest.json here..."
@@ -3667,17 +3679,17 @@ export function showCustomUI(player) {
       </div>
 
       {/* Bottom Console */}
-      <footer className="h-8 border-t border-[#333] bg-[#1a1a1a] flex items-center px-4 justify-between shrink-0">
+      <footer className="h-8 border-t border-zinc-800 bg-zinc-950 flex items-center px-4 justify-between shrink-0">
         <div className="flex gap-4">
           <div className="flex items-center gap-1.5">
             <CheckCircle2 className="w-3 h-3 text-green-500" />
-            <span className="text-[10px] text-[#888] font-medium tracking-wide">
+            <span className="text-[10px] text-zinc-500 font-medium tracking-wide">
               Ready for Bridge IDE.
             </span>
           </div>
           {appPhase === "builder" && selectedElement && (
             <>
-              <div className="h-4 w-[1px] bg-[#333]"></div>
+              <div className="h-4 w-[1px] bg-zinc-800"></div>
               <div className="flex items-center gap-3">
                 <span className="text-[10px] text-[#555] font-mono">
                   X: {selectedElement.x}
@@ -3689,16 +3701,16 @@ export function showCustomUI(player) {
             </>
           )}
         </div>
-        <div className="text-[10px] text-[#666] tracking-wider uppercase">
+        <div className="text-[10px] text-zinc-500 tracking-wider uppercase">
           Drag & Drop GUI Builder | v1.1.0
         </div>
       </footer>
 
       {showSlideModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
-          <div className="bg-[#252525] border border-[#333] rounded-lg shadow-2xl p-6 max-w-lg w-full flex flex-col items-center">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl p-6 max-w-lg w-full flex flex-col items-center">
             <h2 className="text-white text-xl font-bold mb-2">Create New GUI Slide</h2>
-            <p className="text-[#aaa] text-sm text-center mb-6">
+            <p className="text-zinc-400 text-sm text-center mb-6">
               Choose the type of interface this slide will represent.
             </p>
             <div className="flex gap-4 w-full">
@@ -3719,7 +3731,7 @@ export function showCustomUI(player) {
             </div>
             <button
                onClick={() => setShowSlideModal(false)}
-               className="mt-6 text-[#888] hover:text-white text-xs underline"
+               className="mt-6 text-zinc-500 hover:text-white text-xs underline"
             >
               Cancel
             </button>
@@ -3729,20 +3741,20 @@ export function showCustomUI(player) {
 
       {showSettings && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="w-full max-w-sm bg-[#212121] border border-[#333] rounded shadow-2xl p-6">
+          <div className="w-full max-w-sm bg-zinc-900 border border-zinc-800 rounded shadow-2xl p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-bold uppercase tracking-wider text-white">
                 API Settings
               </h3>
               <button
                 onClick={() => setShowSettings(false)}
-                className="text-[#888] hover:text-white"
+                className="text-zinc-500 hover:text-white"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
             <div className="flex flex-col gap-2 mb-6">
-              <label className="text-[11px] font-bold text-[#aaa] uppercase tracking-wider">
+              <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
                 Gemini API Key
               </label>
               <input
@@ -3750,7 +3762,7 @@ export function showCustomUI(player) {
                 value={apiKey}
                 onChange={(e) => saveApiKey(e.target.value)}
                 placeholder="AIzaSy..."
-                className="bg-[#111] border border-[#333] px-3 py-2 rounded text-white text-sm outline-none focus:border-blue-500 font-mono"
+                className="bg-zinc-950 border border-zinc-800 px-3 py-2 rounded text-white text-sm outline-none focus:border-blue-500 font-mono"
               />
               <p className="text-[10px] text-[#555] leading-tight">
                 Key is stored locally in your browser. Required to generate
