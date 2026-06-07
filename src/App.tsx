@@ -1208,13 +1208,13 @@ export function showCustomUI(player) {
         // Auto-added back button
         {
           id: Math.random().toString(36).substr(2, 9),
-          type: "image",
+          type: "button",
           x: 200,
           y: 250,
-          width: 32,
+          width: 200,
           height: 32,
           name: "Back Button",
-          props: { texture: "textures/ui/arrow_left" },
+          props: { text: "§cClose", texture: "textures/ui/arrow_left" },
           variableActions: [{ varId: `_NAV_${activeSlideId}`, amount: 1 }]
         }
       ]
@@ -1223,13 +1223,13 @@ export function showCustomUI(player) {
     // Auto-add next button to current slide
     const currentSlideBtn: EditorElement = {
       id: Math.random().toString(36).substr(2, 9),
-      type: "image",
+      type: "button",
       x: 350,
       y: 250,
-      width: 32,
+      width: 200,
       height: 32,
       name: `Open ${newSlide.name}`,
-      props: { texture: "textures/ui/arrow_right" },
+      props: { text: "§aNext Page", texture: "textures/ui/arrow_right" },
       variableActions: [{ varId: `_NAV_${newSlideId}`, amount: 1 }]
     };
     
@@ -1706,6 +1706,18 @@ export function showCustomUI(player) {
               {guiElements.some((e) =>
                 ["dropdown", "slider", "textfield", "toggle", "player_picker"].includes(e.type),
               ) &&
+                guiElements.some((e) => e.type === "button") && (
+                  <div className="absolute top-4 left-4 right-4 z-[60] bg-[#3a2000]/90 backdrop-blur border border-amber-600 shadow-2xl text-amber-200 p-4 text-xs leading-relaxed rounded-md mb-2">
+                    <div className="font-bold text-sm flex items-center gap-2 mb-2">
+                      <span role="img" aria-label="warning">⚠️</span>
+                      Interactive GUI Navigation Warning
+                    </div>
+                    Minecraft <b>Interactive GUIs</b> (ModalFormData) only allow a single "Submit" button at the very bottom. Added Custom / Navigation buttons will be <b>IGNORED</b> by Minecraft when compiled! Either convert them into variables triggered on submit, or switch to a Text Display GUI.
+                  </div>
+                )}
+              {guiElements.some((e) =>
+                ["dropdown", "slider", "textfield", "toggle", "player_picker"].includes(e.type),
+              ) &&
                 guiElements.filter((e) => e.type === "label").length > 1 && (
                   <div className="absolute top-4 left-4 right-4 z-50 bg-[#3a1a1a]/90 backdrop-blur border border-[#dd3b3b] shadow-2xl text-[#ffa3a3] p-4 text-xs leading-relaxed rounded-md">
                     <div className="font-bold text-sm flex items-center gap-2 mb-2">
@@ -2040,6 +2052,9 @@ export function showCustomUI(player) {
                               }
                               className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-green-400 focus:border-green-500 font-mono transition-colors w-full"
                             />
+                            <div className="text-[9px] text-zinc-500 mt-0.5">
+                              Tip: You can display a variable's value by wrapping its name in braces, e.g. <span className="font-mono text-zinc-400">{"{cash}"}</span>
+                            </div>
                           </div>
 
                           {selectedElement.type === "dropdown" && (
