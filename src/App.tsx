@@ -30,6 +30,8 @@ import {
   GripVertical,
   Plus,
   Trash2,
+  ChevronUp,
+  ChevronDown
 } from "lucide-react";
 
 type ElementType =
@@ -55,11 +57,13 @@ interface EditorElement {
   variableActions?: {
     varId: string;
     amount: number | string;
+    actionType?: "increment" | "set";
     required?: boolean;
   }[];
   variableActionsTarget?: {
     varId: string;
     amount: number | string;
+    actionType?: "increment" | "set";
     required?: boolean;
   }[];
 }
@@ -709,6 +713,7 @@ export default function App() {
         btnActions?: {
           varId: string;
           amount: number | string;
+          actionType?: "increment" | "set";
           required?: boolean;
         }[],
         targetName: string = "player",
@@ -741,7 +746,8 @@ export default function App() {
           requiredActions.forEach((action, i) => {
             let v = variables.find((v) => v.id === action.varId);
             if (v && v.min !== null) {
-              code += `let val${i} = getVar("${v.scope}", "${v.name}", ${targetName});\n      if ((val${i} + ${resolveAmount(action.amount)}) < ${v.min}) { canExecute = false; ${targetName}.sendMessage("§cNot enough ${v.name}!"); }\n      `;
+              const checkVal = action.actionType === "set" ? resolveAmount(action.amount) : `(val${i} + ${resolveAmount(action.amount)})`;
+              code += `let val${i} = getVar("${v.scope}", "${v.name}", ${targetName});\n      if (${checkVal} < ${v.min}) { canExecute = false; ${targetName}.sendMessage("§cNot enough ${v.name}!"); }\n      `;
             }
           });
           code += `if (!canExecute) return;\n      `;
@@ -754,9 +760,10 @@ export default function App() {
             }
             let v = variables.find((v) => v.id === action.varId);
             if (!v) return "";
+            const newVal = action.actionType === "set" ? resolveAmount(action.amount) : `val_${v.name} + ${resolveAmount(action.amount)}`;
             return `{
           let val_${v.name} = getVar("${v.scope}", "${v.name}", ${targetName});
-          setVar("${v.scope}", "${v.name}", ${targetName}, val_${v.name} + ${resolveAmount(action.amount)}, ${v.min !== null ? v.min : "null"}, ${v.max !== null ? v.max : "null"});
+          setVar("${v.scope}", "${v.name}", ${targetName}, ${newVal}, ${v.min !== null ? v.min : "null"}, ${v.max !== null ? v.max : "null"});
           ${targetName}.sendMessage("§a${v.name} is now: " + getVar("${v.scope}", "${v.name}", ${targetName}));
         }`;
           })
@@ -1166,6 +1173,21 @@ export function showCustomUI(player) {
     setShowSlideModal(true);
   };
 
+  const handleMoveSlide = (direction: -1 | 1) => {
+    const currentIndex = guiSlides.findIndex(s => s.id === activeSlideId);
+    if (currentIndex < 0) return;
+    const newIndex = currentIndex + direction;
+    if (newIndex < 0 || newIndex >= guiSlides.length) return;
+    
+    setGuiSlides((prev) => {
+      const next = [...prev];
+      const temp = next[currentIndex];
+      next[currentIndex] = next[newIndex];
+      next[newIndex] = temp;
+      return next;
+    });
+  };
+
   const handleDeleteSlide = () => {
     if (guiSlides.length <= 1) {
       alert("Cannot delete the only remaining slide.");
@@ -1180,6 +1202,8 @@ export function showCustomUI(player) {
 
   const confirmAddSlide = (slideType: "interactive" | "text_display") => {
     const newSlideId = "slide_" + generateUUID().split("-")[0];
+    const lastSlide = guiSlides[guiSlides.length - 1];
+
     const newSlide: GuiSlide = {
       id: newSlideId,
       name: slideType === "interactive" ? "Interactive Slide" : "Text Slide",
@@ -1214,13 +1238,13 @@ export function showCustomUI(player) {
           width: 200,
           height: 32,
           name: "Back Button",
-          props: { text: "§cClose", texture: "textures/ui/arrow_left" },
-          variableActions: [{ varId: `_NAV_${activeSlideId}`, amount: 1 }]
+          props: { text: "§cBack", texture: "textures/ui/arrow_left" },
+          variableActions: [{ varId: `_NAV_${lastSlide.id}`, amount: 1 }]
         }
       ]
     };
     
-    // Auto-add next button to current slide
+    // Auto-add next button to last slide
     const currentSlideBtn: EditorElement = {
       id: Math.random().toString(36).substr(2, 9),
       type: "button",
@@ -1234,7 +1258,7 @@ export function showCustomUI(player) {
     };
     
     setGuiSlides((prev) => {
-      const next = prev.map(s => s.id === activeSlideId ? { ...s, elements: [...s.elements, currentSlideBtn] } : s);
+      const next = prev.map(s => s.id === lastSlide.id ? { ...s, elements: [...s.elements, currentSlideBtn] } : s);
       return [...next, newSlide];
     });
     
@@ -1607,6 +1631,13 @@ export function showCustomUI(player) {
                     <div className="flex justify-between items-center mb-2">
                       <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">GUI Slides</div>
                       <div className="flex items-center gap-2">
+                        <button onClick={() => handleMoveSlide(-1)} className="text-zinc-400 hover:text-white" title="Move Slide Up" disabled={guiSlides.findIndex(s => s.id === activeSlideId) <= 0}>
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => handleMoveSlide(1)} className="text-zinc-400 hover:text-white" title="Move Slide Down" disabled={guiSlides.findIndex(s => s.id === activeSlideId) >= guiSlides.length - 1}>
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </button>
+                        <div className="w-[1px] h-3 bg-zinc-700 mx-1" />
                         <button onClick={handleAddSlide} className="text-zinc-400 hover:text-white" title="Add New Slide">
                           <Plus className="w-3.5 h-3.5" />
                         </button>
@@ -1754,125 +1785,141 @@ export function showCustomUI(player) {
               {/* Main Working Canvas */}
               <div
                 ref={canvasRef}
-                className="relative w-[800px] h-[500px] bg-transparent border border-[#3C3D3F] overflow-hidden rounded-sm"
+                className="relative w-[340px] max-h-[460px] flex flex-col p-4 bg-[#c6c6c6] border-[3px] border-[#3E3E3E] overflow-y-auto shadow-2xl user-select-none"
                 onPointerDown={() => setSelectedId(null)}
+                style={{
+                  boxShadow: "inset 2px 2px 0 rgba(255,255,255,0.6), inset -2px -2px 0 rgba(80,80,80,0.4), 0 10px 30px rgba(0,0,0,0.5)"
+                }}
               >
-                {elements.map((el) => {
-                  const isSelected = selectedId === el.id;
-                  return (
-                    <div
-                      key={el.id}
-                      onPointerDown={(e) => handlePointerDown(e, el.id)}
-                      style={{
-                        position: "absolute",
-                        left: el.x,
-                        top: el.y,
-                        width: el.width,
-                        height: el.height,
-                        cursor: isDragging && isSelected ? "grabbing" : "grab",
-                        border: isSelected
-                          ? "2px solid #5A8F43"
-                          : el.type === "panel"
-                            ? "2px solid transparent"
-                            : "1px solid transparent",
-                        boxShadow: isSelected
-                          ? "0 0 0 2px rgba(90, 143, 67, 0.4)"
-                          : el.type === "panel" && !el.props.previewImage
-                            ? "0px 2px 4px rgba(0,0,0,0.4)"
-                            : "none",
-                        zIndex: isSelected ? 10 : 1,
-                        backgroundImage:
-                          (el.type === "panel" || el.type === "image") &&
-                          el.props.previewImage
-                            ? `url(${el.props.previewImage})`
-                            : "none",
-                        backgroundSize: "100% 100%",
-                        backgroundRepeat: "no-repeat",
-                        borderRadius: el.type === "panel" ? "4px" : "2px",
-                      }}
-                      className={`
-                        ${el.type === "panel" && !el.props.previewImage ? "bg-[#313233] border-[#1E1E1E]" : ""}
-                        ${el.type === "button" ? "bg-[#3C3D3F] border-[#1E1E1E] flex items-center justify-center hover:bg-[#5A5B5D] active:border-white" : ""}
-                        ${el.type === "image" && !el.props.previewImage ? "bg-[#2E2E2E] opacity-80" : ""}
-                        ${["dropdown", "textfield", "player_picker"].includes(el.type) ? "bg-[#1E1E20] border-zinc-800 shadow-inner flex items-center px-3" : ""}
-                        ${el.type === "slider" ? "bg-transparent flex flex-col justify-center" : ""}
-                        ${el.type === "toggle" ? "bg-transparent flex items-center gap-2" : ""}
-                     `}
-                    >
-                      {el.type === "label" && (
-                        <div
-                          className="w-full h-full flex items-center font-sans text-white text-sm"
-                          style={{ textShadow: "0px 1px 2px rgba(0,0,0,0.8)" }}
-                        >
-                          {el.props.text || "Label"}
-                        </div>
-                      )}
-                      {el.type === "button" && (
-                        <div className="w-full h-full flex items-center justify-center font-sans text-white text-sm drop-shadow pointer-events-none select-none">
-                          {el.props.text ? el.props.text : el.name}
-                        </div>
-                      )}
-                      {["dropdown", "textfield", "player_picker"].includes(
-                        el.type,
-                      ) && (
-                        <div className="text-white text-sm font-sans truncate w-full pointer-events-none select-none drop-shadow flex justify-between items-center">
-                          <span>
-                            {el.type === "textfield"
-                              ? el.props.textFieldDefault ||
-                                el.props.textFieldPlaceholder ||
-                                el.props.text ||
-                                el.name
-                              : el.type === "player_picker"
-                                ? el.props.text || "Select Player..."
-                                : el.props.text || el.name}
-                          </span>
-                          {el.type === "player_picker" && (
-                            <Users className="w-3 h-3 text-zinc-400" />
-                          )}
-                        </div>
-                      )}
-                      {el.type === "slider" && (
-                        <>
-                          <div className="text-white text-sm font-sans mb-1.5 drop-shadow pointer-events-none select-none">
-                            {el.props.text || el.name} (
-                            {el.props.sliderDefault || "0"})
+                {/* Title (First Label acts as Title) */}
+                {elements.filter((e) => e.type === "label").length > 0 && (
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedId(elements.find((el) => el.type === "label")!.id);
+                    }}
+                    className={`font-bold text-[#3E3E3E] text-base mb-3 font-sans break-words cursor-pointer px-1 ${
+                      selectedId === elements.find((el) => el.type === "label")!.id
+                        ? "outline outline-2 outline-blue-500 bg-blue-500/10 rounded-sm"
+                        : "hover:bg-black/5 rounded-sm"
+                    }`}
+                    style={{ textShadow: "1px 1px 0 rgba(255,255,255,0.4)" }}
+                  >
+                    {elements.find((el) => el.type === "label")!.props.text || elements.find((el) => el.type === "label")!.name}
+                  </div>
+                )}
+
+                {/* Body Text (Remaining Labels) */}
+                <div className="flex flex-col gap-1 mb-4">
+                  {elements
+                    .filter((e) => e.type === "label")
+                    .slice(1)
+                    .map((el) => (
+                      <div
+                        key={el.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedId(el.id);
+                        }}
+                        className={`text-[#3E3E3E] text-sm font-sans break-words cursor-pointer px-1 ${
+                          selectedId === el.id
+                            ? "outline outline-2 outline-blue-500 bg-blue-500/10 rounded-sm"
+                            : "hover:bg-black/5 rounded-sm"
+                        }`}
+                      >
+                        {el.props.text || el.name}
+                      </div>
+                    ))}
+                </div>
+
+                {/* Form Inputs (ModalFormData only) */}
+                <div className="flex flex-col gap-3 mb-4">
+                  {elements
+                    .filter((e) =>
+                      ["dropdown", "slider", "textfield", "toggle", "player_picker"].includes(e.type),
+                    )
+                    .map((el) => (
+                      <div
+                        key={el.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedId(el.id);
+                        }}
+                        className={`flex flex-col gap-1 cursor-pointer p-1 -mx-1 ${
+                          selectedId === el.id
+                            ? "outline outline-2 outline-blue-500 bg-blue-500/10 rounded-sm"
+                            : "hover:bg-black/5 rounded-sm"
+                        }`}
+                      >
+                        <label className="text-[#3E3E3E] text-sm font-bold flex justify-between items-center">
+                          {el.props.text || el.name}
+                        </label>
+
+                        {/* Input Mockups */}
+                        {["dropdown", "player_picker"].includes(el.type) && (
+                          <div className="w-full h-8 bg-[#313233] border-[2px] border-[#1E1E1E] flex items-center px-2 text-white text-xs shadow-inner">
+                            {el.type === "player_picker" ? "Select Player..." : "Dropdown Option"}
                           </div>
-                          <div className="w-full h-2 bg-[#1E1E20] border border-zinc-800 rounded-full relative shadow-inner">
-                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-5 bg-[#3C3D3F] hover:bg-[#5A5B5D] border border-white rounded-sm" />
-                            <div className="absolute top-0 left-0 w-1/2 h-full bg-[#5A8F43] rounded-l-full pointer-events-none" />
+                        )}
+                        {el.type === "textfield" && (
+                          <div className="w-full h-8 bg-[#111111] border-[2px] border-[#1E1E1E] flex items-center px-2 text-[#999] text-xs shadow-inner">
+                            {el.props.textFieldPlaceholder || "Text field content"}
                           </div>
-                        </>
-                      )}
-                      {el.type === "toggle" && (
-                        <>
-                          <div className="w-10 h-5 border border-zinc-800 bg-[#1E1E20] rounded-full flex items-center p-0.5 shadow-inner">
+                        )}
+                        {el.type === "slider" && (
+                          <div className="w-full h-2 mt-2 bg-[#313233] border border-[#1E1E1E] relative shadow-inner">
+                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-5 bg-[#C6C6C6] border-2 border-[#1E1E1E] shadow-sm" />
+                          </div>
+                        )}
+                        {el.type === "toggle" && (
+                          <div className="w-10 h-5 border-[2px] border-[#1E1E1E] bg-[#313233] flex items-center p-0.5 shadow-inner">
                             {el.props.toggleDefault === "true" ? (
-                              <div className="w-9 h-full flex justify-end">
-                                <div className="w-4 h-full bg-[#5A8F43] rounded-full shadow-sm" />
+                              <div className="w-full flex justify-end">
+                                <div className="w-3 h-full bg-[#5A8F43] border border-[#3C3D3F]" />
                               </div>
                             ) : (
-                              <div className="w-9 h-full flex justify-start">
-                                <div className="w-4 h-full bg-[#3C3D3F] rounded-full shadow-sm border border-[#1E1E1E]" />
+                              <div className="w-full flex justify-start">
+                                <div className="w-3 h-full bg-[#5A5B5D] border border-[#3C3D3F]" />
                               </div>
                             )}
                           </div>
-                          <div className="text-white text-sm font-sans font-medium drop-shadow pointer-events-none select-none">
-                            {el.props.text || el.name}
-                          </div>
-                        </>
-                      )}
+                        )}
+                      </div>
+                    ))}
+                </div>
 
-                      {isSelected && (
-                        <>
-                          <div className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-[#5A8F43] border-2 border-white rounded-sm" />
-                          <div className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-[#5A8F43] border-2 border-white rounded-sm" />
-                          <div className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-[#5A8F43] border-2 border-white rounded-sm" />
-                          <div className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-[#5A8F43] border-2 border-white rounded-sm" />
-                        </>
-                      )}
-                    </div>
-                  );
-                })}
+                {/* Buttons Stack */}
+                <div className="flex flex-col gap-1.5 mt-auto">
+                  {elements
+                    .filter((e) => e.type === "button" || e.type === "image")
+                    .map((el) => (
+                      <div
+                        key={el.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedId(el.id);
+                        }}
+                        className={`w-full py-2 px-3 bg-[#3C3D3F] border-[2px] border-[#1E1E1E] flex items-center cursor-pointer shadow-[inset_1px_1px_0_rgba(255,255,255,0.2)] ${
+                          selectedId === el.id
+                            ? "outline outline-2 outline-offset-1 outline-blue-500"
+                            : "hover:bg-[#4C4D4F]"
+                        }`}
+                      >
+                        {el.props.texture ? (
+                          <img
+                            src={el.props.texture.startsWith("http") ? el.props.texture : `/${el.props.texture}`}
+                            alt=""
+                            className="w-5 h-5 mr-3 object-contain rounded-sm"
+                            style={{ imageRendering: "pixelated" }}
+                            onError={(e) => (e.currentTarget.style.display = 'none')}
+                          />
+                        ) : null}
+                        <span className="text-white font-sans text-sm tracking-wide truncate">
+                          {el.props.text || el.name}
+                        </span>
+                      </div>
+                    ))}
+                </div>
               </div>
 
               <div className="absolute left-6 top-6 flex flex-col gap-2 z-20">
@@ -1949,83 +1996,8 @@ export function showCustomUI(player) {
                         <span className="text-[10px] font-bold text-zinc-500 uppercase">
                           Geometry & Position
                         </span>
-                        <div className="grid grid-cols-2 gap-3 mb-2">
-                          <div className="flex flex-col gap-1">
-                            <label className="text-[9px] text-zinc-500">
-                              X Position (px)
-                            </label>
-                            <div className="flex bg-zinc-950 border border-zinc-800 rounded overflow-hidden focus-within:border-blue-500 transition-colors">
-                              <span className="text-[10px] text-[#555] px-2 py-1.5 bg-zinc-950 border-r border-zinc-800">
-                                X
-                              </span>
-                              <input
-                                type="number"
-                                value={selectedElement.x}
-                                readOnly
-                                className="bg-transparent px-2 py-1.5 text-[11px] outline-none text-blue-400 w-full font-mono cursor-default"
-                              />
-                            </div>
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            <label className="text-[9px] text-zinc-500">
-                              Y Position (px)
-                            </label>
-                            <div className="flex bg-zinc-950 border border-zinc-800 rounded overflow-hidden focus-within:border-blue-500 transition-colors">
-                              <span className="text-[10px] text-[#555] px-2 py-1.5 bg-zinc-950 border-r border-zinc-800">
-                                Y
-                              </span>
-                              <input
-                                type="number"
-                                value={selectedElement.y}
-                                readOnly
-                                className="bg-transparent px-2 py-1.5 text-[11px] outline-none text-blue-400 w-full font-mono cursor-default"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="flex flex-col gap-1">
-                            <label className="text-[9px] text-zinc-500">
-                              Width (px)
-                            </label>
-                            <div className="flex bg-zinc-950 border border-zinc-800 rounded overflow-hidden focus-within:border-blue-500 transition-colors">
-                              <span className="text-[10px] text-[#555] px-2 py-1.5 bg-zinc-950 border-r border-zinc-800">
-                                W
-                              </span>
-                              <input
-                                type="number"
-                                value={selectedElement.width}
-                                onChange={(e) =>
-                                  updateSelectedDimensions(
-                                    parseInt(e.target.value) || 0,
-                                    selectedElement.height,
-                                  )
-                                }
-                                className="bg-transparent px-2 py-1.5 text-[11px] outline-none text-white w-full font-mono"
-                              />
-                            </div>
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            <label className="text-[9px] text-zinc-500">
-                              Height (px)
-                            </label>
-                            <div className="flex bg-zinc-950 border border-zinc-800 rounded overflow-hidden focus-within:border-blue-500 transition-colors">
-                              <span className="text-[10px] text-[#555] px-2 py-1.5 bg-zinc-950 border-r border-zinc-800">
-                                H
-                              </span>
-                              <input
-                                type="number"
-                                value={selectedElement.height}
-                                onChange={(e) =>
-                                  updateSelectedDimensions(
-                                    selectedElement.width,
-                                    parseInt(e.target.value) || 0,
-                                  )
-                                }
-                                className="bg-transparent px-2 py-1.5 text-[11px] outline-none text-white w-full font-mono"
-                              />
-                            </div>
-                          </div>
+                        <div className="text-[10px] text-zinc-500 mb-2 leading-relaxed bg-zinc-950 p-2 rounded border border-zinc-800/50">
+                          Minecraft Bedrock generated forms are strictly governed by the game engine. Custom positioning (X, Y) and sizing (Width, Height) are not supported with Script API. The preview reflects realistic form grouping.
                         </div>
                       </div>
 
@@ -2350,9 +2322,30 @@ export function showCustomUI(player) {
                                           </option>
                                         ))}
                                       </select>
-                                      <span className="text-zinc-500 text-[10px] font-bold">
-                                        +
-                                      </span>
+                                      <select
+                                        value={act.actionType || "increment"}
+                                        onChange={(e) => {
+                                          const acts = [
+                                            ...(selectedElement.variableActions ||
+                                              []),
+                                          ];
+                                          acts[idx].actionType = e.target.value as "increment" | "set";
+                                          setElements((prev) =>
+                                            prev.map((el) =>
+                                              el.id === selectedId
+                                                ? {
+                                                    ...el,
+                                                    variableActions: acts,
+                                                  }
+                                                : el,
+                                            ),
+                                          );
+                                        }}
+                                        className="bg-zinc-900 border border-zinc-700 text-white text-[9px] rounded p-1 outline-none w-14"
+                                      >
+                                        <option value="increment">Inc (+)</option>
+                                        <option value="set">Set (=)</option>
+                                      </select>
                                       <input
                                         type="text"
                                         value={act.amount}
@@ -2362,7 +2355,6 @@ export function showCustomUI(player) {
                                               []),
                                           ];
                                           const val = e.target.value;
-                                          // if it matches a number, keep it a number format, else string
                                           acts[idx].amount =
                                             isNaN(Number(val)) ||
                                             val.trim() === ""
@@ -2506,9 +2498,30 @@ export function showCustomUI(player) {
                                               </option>
                                             ))}
                                           </select>
-                                          <span className="text-zinc-500 text-[10px] font-bold">
-                                            +
-                                          </span>
+                                          <select
+                                            value={act.actionType || "increment"}
+                                            onChange={(e) => {
+                                              const acts = [
+                                                ...(selectedElement.variableActionsTarget ||
+                                                  []),
+                                              ];
+                                              acts[idx].actionType = e.target.value as "increment" | "set";
+                                              setElements((prev) =>
+                                                prev.map((el) =>
+                                                  el.id === selectedId
+                                                    ? {
+                                                        ...el,
+                                                        variableActionsTarget: acts,
+                                                      }
+                                                    : el,
+                                                ),
+                                              );
+                                            }}
+                                            className="bg-zinc-900 border border-zinc-700 text-white text-[9px] rounded p-1 outline-none w-14"
+                                          >
+                                            <option value="increment">Inc (+)</option>
+                                            <option value="set">Set (=)</option>
+                                          </select>
                                           <input
                                             type="text"
                                             value={act.amount}
@@ -2590,6 +2603,16 @@ export function showCustomUI(player) {
                               placeholder="textures/ui/..."
                               className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono transition-colors w-full"
                             />
+                            {selectedElement.type === "button" && (
+                             <p className="text-[9px] text-zinc-500 mt-1 leading-relaxed">
+                              Setting a texture on a button displays the image beside the button text in Minecraft natively.
+                             </p>
+                            )}
+                            {selectedElement.type === "image" && (
+                             <p className="text-[9px] text-zinc-500 mt-1 leading-relaxed">
+                              Minecraft Script API handles image dimensions automatically when rendered in forms. Explicit width/height sizing is ignored.
+                             </p>
+                            )}
                           </div>
                           <div className="flex flex-col gap-1">
                             <label className="text-[9px] text-zinc-500">
