@@ -935,10 +935,8 @@ export function showCustomUI_${slide.id}(player) {
   }
 }, 20); // Runs once every second (20 ticks)`;
             } else if (resolvedEventName === "complex_script") {
-              return (
-                inc.aiGeneratedCode ||
-                `// TODO: Define custom AI logic for "${v.name}" here!\n// world.afterEvents.entityHurt.subscribe((event) => { /* logic */ });`
-              );
+              const safeCode = (inc.aiGeneratedCode || `// TODO: Define custom AI logic for "${v.name}" here!\n// world.afterEvents.entityHurt.subscribe((event) => { /* logic */ });`).replace(/import\s+[\s\S]*?from\s+['"][^'"]+['"];?/g, '');
+              return `try {\n${safeCode}\n} catch(err) { console.error("Error setting up complex script:", err); }`;
             } else if (resolvedEventName === "custom_item") {
               return `try {
   world.afterEvents.itemUse.subscribe((event) => {
@@ -978,15 +976,17 @@ ${inc.destroyItemOnUse ? `        // Destroy item on use\n        try {\n       
         customTriggers
           .map((t) => {
             if (t.type === "itemUse")
-              return `world.afterEvents.itemUse.subscribe((event) => {\n  if (event.itemStack.typeId === "${t.config.itemId || "minecraft:stick"}") {\n    system.runTimeout(() => { showCustomUI(event.source); }, 20);\n  }\n});`;
+              return `try {\n  world.afterEvents.itemUse.subscribe((event) => {\n    if (event.itemStack.typeId === "${t.config.itemId || "minecraft:stick"}") {\n      system.runTimeout(() => { showCustomUI(event.source); }, 20);\n    }\n  });\n} catch(e) { console.error(e); }`;
             if (t.type === "blockBreak")
-              return `world.afterEvents.playerBreakBlock.subscribe((event) => {\n  if (event.block.typeId === "${t.config.blockId || "minecraft:dirt"}") {\n    system.runTimeout(() => { showCustomUI(event.player); }, 20);\n  }\n});`;
+              return `try {\n  world.afterEvents.playerBreakBlock.subscribe((event) => {\n    if (event.block.typeId === "${t.config.blockId || "minecraft:dirt"}") {\n      system.runTimeout(() => { showCustomUI(event.player); }, 20);\n    }\n  });\n} catch(e) { console.error(e); }`;
             if (t.type === "entityHit")
-              return `world.afterEvents.entityHitEntity.subscribe((event) => {\n  if (event.hitEntity.typeId === "${t.config.entityId || "minecraft:cow"}" && event.damagingEntity.typeId === "minecraft:player") {\n    system.runTimeout(() => { showCustomUI(event.damagingEntity); }, 20);\n  }\n});`;
+              return `try {\n  world.afterEvents.entityHitEntity.subscribe((event) => {\n    if (event.hitEntity.typeId === "${t.config.entityId || "minecraft:cow"}" && event.damagingEntity.typeId === "minecraft:player") {\n      system.runTimeout(() => { showCustomUI(event.damagingEntity); }, 20);\n    }\n  });\n} catch(e) { console.error(e); }`;
             if (t.type === "chatCommand")
-              return `world.beforeEvents.chatSend.subscribe((event) => {\n  if (event.message === "${t.config.command || "!showgui"}") {\n    event.cancel = true;\n    system.runTimeout(() => { showCustomUI(event.sender); }, 20);\n  }\n});`;
-            if (t.type === "aiGenerated")
-              return `// AI Generated code from prompt: "${t.config.prompt}"\n${t.config.code || "// Not generated yet"}`;
+              return `try {\n  world.beforeEvents.chatSend.subscribe((event) => {\n    if (event.message === "${t.config.command || "!showgui"}") {\n      event.cancel = true;\n      system.runTimeout(() => { showCustomUI(event.sender); }, 20);\n    }\n  });\n} catch(e) { console.error(e); }`;
+            if (t.type === "aiGenerated") {
+              const safeCode = (t.config.code?.replace(/\n/g, "\n  ") || "// Not generated yet").replace(/import\s+[\s\S]*?from\s+['"][^'"]+['"];?/g, '');
+              return `try {\n  // AI Generated code from prompt: "${t.config.prompt}"\n  ${safeCode}\n} catch(e) { console.error(e); }`;
+            }
             return "";
           })
           .join("\n\n");
