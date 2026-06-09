@@ -1281,6 +1281,51 @@ export function showCustomUI(player) {
     );
   };
 
+  const handleMoveElement = (direction: -1 | 1) => {
+    if (!selectedId) return;
+    setElements((prev) => {
+      const currentIndex = prev.findIndex((el) => el.id === selectedId);
+      if (currentIndex < 0) return prev;
+      
+      const elType = prev[currentIndex].type;
+      
+      const getCategory = (type: string) => {
+        if (type === "label") return "label";
+        if (["dropdown", "slider", "textfield", "toggle", "player_picker"].includes(type)) return "input";
+        if (["button", "image", "panel"].includes(type)) return "button";
+        return "other";
+      };
+      
+      const myCategory = getCategory(elType);
+      
+      let swapIndex = -1;
+      if (direction === -1) {
+         for (let i = currentIndex - 1; i >= 0; i--) {
+            if (getCategory(prev[i].type) === myCategory) {
+               swapIndex = i;
+               break;
+            }
+         }
+      } else {
+         for (let i = currentIndex + 1; i < prev.length; i++) {
+            if (getCategory(prev[i].type) === myCategory) {
+               swapIndex = i;
+               break;
+            }
+         }
+      }
+      
+      if (swapIndex !== -1) {
+         const next = [...prev];
+         const temp = next[currentIndex];
+         next[currentIndex] = next[swapIndex];
+         next[swapIndex] = temp;
+         return next;
+      }
+      return prev;
+    });
+  };
+
   const handleDeleteElement = (id: string) => {
     setElements((prev) => prev.filter((el) => el.id !== id));
     if (selectedId === id) setSelectedId(null);
@@ -1965,9 +2010,28 @@ export function showCustomUI(player) {
                     <>
                       {/* Identification */}
                       <div className="flex flex-col gap-2">
-                        <span className="text-[10px] font-bold text-zinc-500 uppercase">
-                          Identification
-                        </span>
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] font-bold text-zinc-500 uppercase">
+                            Identification
+                          </span>
+                          <div className="flex items-center gap-1 bg-zinc-950 border border-zinc-800 rounded p-0.5">
+                            <button
+                              onClick={() => handleMoveElement(-1)}
+                              className="text-zinc-400 hover:text-white p-1 rounded hover:bg-zinc-800 transition-colors"
+                              title="Move Element Up"
+                            >
+                              <ChevronUp className="w-3 h-3" />
+                            </button>
+                            <div className="w-[1px] h-3 bg-zinc-700 mx-0.5" />
+                            <button
+                              onClick={() => handleMoveElement(1)}
+                              className="text-zinc-400 hover:text-white p-1 rounded hover:bg-zinc-800 transition-colors"
+                              title="Move Element Down"
+                            >
+                              <ChevronDown className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
                         <div className="flex flex-col gap-1">
                           <label className="text-[9px] text-zinc-500">
                             Element Name
