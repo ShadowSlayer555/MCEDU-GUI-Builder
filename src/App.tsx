@@ -94,6 +94,7 @@ const generateUUID = () => {
 
 const MC_EVENTS = [
   "custom_item",
+  "xpGained",
   "playerBreakBlock",
   "playerPlaceBlock",
   "buttonPush",
@@ -121,6 +122,15 @@ interface VariableIncrement {
   aiGeneratedCode?: string;
   customItemId?: string;
   destroyItemOnUse?: boolean;
+  xpThreshold?: number;
+}
+
+interface VariableHUD {
+  enabled: boolean;
+  style: "text" | "bar" | "icons" | "solid_bar" | "squares";
+  color: string;
+  iconText?: string;
+  maxOverride?: number;
 }
 
 interface Variable {
@@ -130,6 +140,7 @@ interface Variable {
   min: number | null;
   max: number | null;
   increments: VariableIncrement[];
+  hud?: VariableHUD;
 }
 
 export default function App() {
@@ -934,6 +945,42 @@ export function showCustomUI_${slide.id}(player) {
     setVar("${v.scope}", "${v.name}", p, val + (${inc.amount}), ${v.min !== null ? v.min : "null"}, ${v.max !== null ? v.max : "null"});
   }
 }, 20); // Runs once every second (20 ticks)`;
+            } else if (resolvedEventName === "xpGained") {
+              const LAST_CHECKED = `lastCheckedXpFor_${v.name.replace(/[^a-zA-Z0-9_]/g, "_")}`;
+              const THRESHOLD = inc.xpThreshold || 1;
+              return `try {
+  world.afterEvents.playerSpawn.subscribe((event) => {
+    const player = event.player;
+    if (player.getDynamicProperty("${LAST_CHECKED}") === undefined) {
+      player.setDynamicProperty("${LAST_CHECKED}", player.totalXp);
+    }
+  });
+
+  system.runInterval(() => {
+    for (const player of world.getAllPlayers()) {
+      let lastCheckedXp = player.getDynamicProperty("${LAST_CHECKED}");
+      if (lastCheckedXp === undefined) {
+        player.setDynamicProperty("${LAST_CHECKED}", player.totalXp);
+        continue;
+      }
+      
+      const currentXp = player.totalXp;
+      const xpGained = currentXp - lastCheckedXp;
+      const threshold = ${THRESHOLD};
+      
+      if (xpGained >= threshold) {
+        const pointsToAward = Math.floor(xpGained / threshold) * (${inc.amount});
+        let val = getVar("${v.scope}", "${v.name}", player);
+        setVar("${v.scope}", "${v.name}", player, val + pointsToAward, ${v.min !== null ? v.min : "null"}, ${v.max !== null ? v.max : "null"});
+        
+        lastCheckedXp += Math.floor(xpGained / threshold) * threshold;
+        player.setDynamicProperty("${LAST_CHECKED}", lastCheckedXp);
+      } else if (xpGained < 0) {
+        player.setDynamicProperty("${LAST_CHECKED}", currentXp);
+      }
+    }
+  }, 5);
+} catch (err) { console.error("Error setting up xpGained tracking:", err); }`;
             } else if (resolvedEventName === "complex_script") {
               const safeCode = (inc.aiGeneratedCode || `// TODO: Define custom AI logic for "${v.name}" here!\n// world.afterEvents.entityHurt.subscribe((event) => { /* logic */ });`).replace(/import\s+[\s\S]*?from\s+['"][^'"]+['"];?/g, '');
               return `try {\n${safeCode}\n} catch(err) { console.error("Error setting up complex script:", err); }`;
@@ -968,6 +1015,69 @@ ${inc.destroyItemOnUse ? `        // Destroy item on use\n        try {\n       
       })
       .filter(Boolean)
       .join("\n\n");
+
+    const hudVariables = variables.filter((v) => v.hud?.enabled);
+    let hudCode = "";
+    if (hudVariables.length > 0) {
+      hudCode = `
+// --- HUD Actionbar Display ---
+system.runInterval(() => {
+  for (const p of world.getAllPlayers()) {
+    let actionbarLines = [];
+${hudVariables.map(v => {
+  let color = v.hud?.color || "§f";
+  if (v.hud?.style === "bar" || v.hud?.style === "solid_bar" || v.hud?.style === "squares") {
+    let maxSrc = v.max !== null ? parseFloat(v.max as any) : (v.hud?.maxOverride || 100);
+    let filledChar = "|"; let emptyChar = "|";
+    let filledColor = "§a"; let emptyColor = "§7";
+    
+    if (v.hud?.style === "solid_bar") {
+       filledChar = "█"; emptyChar = "▒";
+       filledColor = color; emptyColor = "§8";
+    } else if (v.hud?.style === "squares") {
+       filledChar = "🟩"; emptyChar = "⬛";
+       filledColor = ""; emptyColor = "";
+       // For squares, use the chosen color just for the prefix name
+    } else {
+       filledChar = "|"; emptyChar = "|";
+       filledColor = color; emptyColor = "§7";
+    }
+
+    return `    {
+      let val = getVar("${v.scope}", "${v.name}", p);
+      let max = ${maxSrc};
+      let ratio = Math.max(0, Math.min(1, val / max));
+      let filled = Math.round(ratio * 10);
+      let empty = 10 - filled;
+      actionbarLines.push("${color}${v.name}: " + "${filledColor}" + "${filledChar}".repeat(filled) + "${emptyColor}" + "${emptyChar}".repeat(empty));
+    }`;
+  } else if (v.hud?.style === "icons") {
+    let icon = (v.hud?.iconText || "⭐").replace(/"/g, '\\"');
+    return `    {
+      let val = getVar("${v.scope}", "${v.name}", p);
+      if (val > 0) {
+        actionbarLines.push("${color}" + "${icon}".repeat(Math.max(0, Math.min(val, 20))));
+      } else {
+        actionbarLines.push("${color}${v.name}: 0");
+      }
+    }`;
+  } else {
+    return `    {
+      let val = getVar("${v.scope}", "${v.name}", p);
+      actionbarLines.push("${color}${v.name}: " + val);
+    }`;
+  }
+}).join("\n")}
+    if (actionbarLines.length > 0) {
+      if (p.onScreenDisplay && p.onScreenDisplay.setActionBar) {
+         p.onScreenDisplay.setActionBar(actionbarLines.join("   "));
+      } else {
+         p.runCommand(\`titleraw @s actionbar {"rawtext":[{"text":"\${actionbarLines.join("   ")}"}]}\`);
+      }
+    }
+  }
+}, 5);`;
+    }
 
     let customTriggersCode = "";
     if (openedFrom === "hidden" && customTriggers.length > 0) {
@@ -1064,6 +1174,8 @@ function setVar(scope, varName, player, val, min, max) {
 
 // --- Variable Event Triggers ---
 ${triggerEventCode}
+
+${hudCode}
 
 ${bookGiveCode}
 
@@ -1839,6 +1951,11 @@ export function showCustomUI(player) {
                 {/* Title (First Label acts as Title) */}
                 {elements.filter((e) => e.type === "label").length > 0 && (
                   <div
+                    draggable
+                    onDragStart={(e) => handleLayerDragStart(e, elements.find((el) => el.type === "label")!.id)}
+                    onDragOver={handleLayerDragOver}
+                    onDrop={(e) => handleLayerDrop(e, elements.find((el) => el.type === "label")!.id)}
+                    onDragEnd={() => setDraggedLayerId(null)}
                     onClick={(e) => {
                       e.stopPropagation();
                       setSelectedId(elements.find((el) => el.type === "label")!.id);
@@ -1847,7 +1964,7 @@ export function showCustomUI(player) {
                       selectedId === elements.find((el) => el.type === "label")!.id
                         ? "outline outline-2 outline-blue-500 bg-blue-500/10 rounded-sm"
                         : "hover:bg-black/5 rounded-sm"
-                    }`}
+                    } ${draggedLayerId === elements.find((el) => el.type === "label")!.id ? "opacity-50" : ""}`}
                     style={{ textShadow: "1px 1px 0 rgba(255,255,255,0.4)" }}
                   >
                     {elements.find((el) => el.type === "label")!.props.text || elements.find((el) => el.type === "label")!.name}
@@ -1862,15 +1979,20 @@ export function showCustomUI(player) {
                     .map((el) => (
                       <div
                         key={el.id}
+                        draggable
+                        onDragStart={(e) => handleLayerDragStart(e, el.id)}
+                        onDragOver={handleLayerDragOver}
+                        onDrop={(e) => handleLayerDrop(e, el.id)}
+                        onDragEnd={() => setDraggedLayerId(null)}
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedId(el.id);
                         }}
-                        className={`text-[#3E3E3E] text-sm font-sans break-words cursor-pointer px-1 ${
+                        className={`text-[#3E3E3E] text-sm font-sans break-words cursor-pointer px-1 transition-opacity ${
                           selectedId === el.id
                             ? "outline outline-2 outline-blue-500 bg-blue-500/10 rounded-sm"
                             : "hover:bg-black/5 rounded-sm"
-                        }`}
+                        } ${draggedLayerId === el.id ? "opacity-30 border-dashed border-2 border-zinc-400" : ""}`}
                       >
                         {el.props.text || el.name}
                       </div>
@@ -1886,45 +2008,50 @@ export function showCustomUI(player) {
                     .map((el) => (
                       <div
                         key={el.id}
+                        draggable
+                        onDragStart={(e) => handleLayerDragStart(e, el.id)}
+                        onDragOver={handleLayerDragOver}
+                        onDrop={(e) => handleLayerDrop(e, el.id)}
+                        onDragEnd={() => setDraggedLayerId(null)}
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedId(el.id);
                         }}
-                        className={`flex flex-col gap-1 cursor-pointer p-1 -mx-1 ${
+                        className={`flex flex-col gap-1 cursor-pointer p-1 -mx-1 transition-opacity ${
                           selectedId === el.id
                             ? "outline outline-2 outline-blue-500 bg-blue-500/10 rounded-sm"
                             : "hover:bg-black/5 rounded-sm"
-                        }`}
+                        } ${draggedLayerId === el.id ? "opacity-30 border-dashed border-2 border-zinc-400" : ""}`}
                       >
-                        <label className="text-[#3E3E3E] text-sm font-bold flex justify-between items-center">
+                        <label className="text-[#3E3E3E] text-sm font-bold flex justify-between items-center pointer-events-none">
                           {el.props.text || el.name}
                         </label>
 
                         {/* Input Mockups */}
                         {["dropdown", "player_picker"].includes(el.type) && (
-                          <div className="w-full h-8 bg-[#313233] border-[2px] border-[#1E1E1E] flex items-center px-2 text-white text-xs shadow-inner">
+                          <div className="w-full h-8 bg-[#313233] border-[2px] border-[#1E1E1E] flex items-center px-2 text-white text-xs shadow-inner pointer-events-none">
                             {el.type === "player_picker" ? "Select Player..." : "Dropdown Option"}
                           </div>
                         )}
                         {el.type === "textfield" && (
-                          <div className="w-full h-8 bg-[#111111] border-[2px] border-[#1E1E1E] flex items-center px-2 text-[#999] text-xs shadow-inner">
+                          <div className="w-full h-8 bg-[#111111] border-[2px] border-[#1E1E1E] flex items-center px-2 text-[#999] text-xs shadow-inner pointer-events-none">
                             {el.props.textFieldPlaceholder || "Text field content"}
                           </div>
                         )}
                         {el.type === "slider" && (
-                          <div className="w-full h-2 mt-2 bg-[#313233] border border-[#1E1E1E] relative shadow-inner">
-                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-5 bg-[#C6C6C6] border-2 border-[#1E1E1E] shadow-sm" />
+                          <div className="w-full h-2 mt-2 bg-[#313233] border border-[#1E1E1E] relative shadow-inner pointer-events-none">
+                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-5 bg-[#C6C6C6] border-2 border-[#1E1E1E] shadow-sm pointer-events-none" />
                           </div>
                         )}
                         {el.type === "toggle" && (
-                          <div className="w-10 h-5 border-[2px] border-[#1E1E1E] bg-[#313233] flex items-center p-0.5 shadow-inner">
+                          <div className="w-10 h-5 border-[2px] border-[#1E1E1E] bg-[#313233] flex items-center p-0.5 shadow-inner pointer-events-none">
                             {el.props.toggleDefault === "true" ? (
-                              <div className="w-full flex justify-end">
-                                <div className="w-3 h-full bg-[#5A8F43] border border-[#3C3D3F]" />
+                              <div className="w-full flex justify-end pointer-events-none">
+                                <div className="w-3 h-full bg-[#5A8F43] border border-[#3C3D3F] pointer-events-none" />
                               </div>
                             ) : (
-                              <div className="w-full flex justify-start">
-                                <div className="w-3 h-full bg-[#5A5B5D] border border-[#3C3D3F]" />
+                              <div className="w-full flex justify-start pointer-events-none">
+                                <div className="w-3 h-full bg-[#5A5B5D] border border-[#3C3D3F] pointer-events-none" />
                               </div>
                             )}
                           </div>
@@ -1940,26 +2067,31 @@ export function showCustomUI(player) {
                     .map((el) => (
                       <div
                         key={el.id}
+                        draggable
+                        onDragStart={(e) => handleLayerDragStart(e, el.id)}
+                        onDragOver={handleLayerDragOver}
+                        onDrop={(e) => handleLayerDrop(e, el.id)}
+                        onDragEnd={() => setDraggedLayerId(null)}
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedId(el.id);
                         }}
-                        className={`w-full py-2 px-3 bg-[#3C3D3F] border-[2px] border-[#1E1E1E] flex items-center cursor-pointer shadow-[inset_1px_1px_0_rgba(255,255,255,0.2)] ${
+                        className={`w-full py-2 px-3 bg-[#3C3D3F] border-[2px] border-[#1E1E1E] flex items-center cursor-pointer shadow-[inset_1px_1px_0_rgba(255,255,255,0.2)] transition-opacity ${
                           selectedId === el.id
                             ? "outline outline-2 outline-offset-1 outline-blue-500"
                             : "hover:bg-[#4C4D4F]"
-                        }`}
+                        } ${draggedLayerId === el.id ? "opacity-30 border-dashed border-2 border-zinc-400" : ""}`}
                       >
                         {el.props.texture ? (
                           <img
                             src={el.props.texture.startsWith("http") ? el.props.texture : `/${el.props.texture}`}
                             alt=""
-                            className="w-5 h-5 mr-3 object-contain rounded-sm"
+                            className="w-5 h-5 mr-3 object-contain rounded-sm pointer-events-none"
                             style={{ imageRendering: "pixelated" }}
                             onError={(e) => (e.currentTarget.style.display = 'none')}
                           />
                         ) : null}
-                        <span className="text-white font-sans text-sm tracking-wide truncate">
+                        <span className="text-white font-sans text-sm tracking-wide truncate pointer-events-none">
                           {el.props.text || el.name}
                         </span>
                       </div>
@@ -3193,6 +3325,25 @@ export function showCustomUI(player) {
                                 X
                               </button>
                             </div>
+                            {inc.event === "xpGained" && (
+                              <div className="flex gap-2 items-center mt-1">
+                                <span className="text-zinc-500 text-xs">Per</span>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  placeholder="25"
+                                  value={inc.xpThreshold || 1}
+                                  onChange={(e) => {
+                                    const newVars = [...variables];
+                                    newVars[i].increments[incIdx].xpThreshold =
+                                      Math.max(1, parseInt(e.target.value) || 1);
+                                    setVariables(newVars);
+                                  }}
+                                  className="bg-zinc-950 border border-zinc-800 p-1 text-white font-mono text-xs rounded w-16 outline-none focus:border-[#007acc]"
+                                />
+                                <span className="text-zinc-500 text-xs">XP</span>
+                              </div>
+                            )}
                             {inc.event === "custom_item" && (
                               <div className="flex gap-2 items-center mt-1">
                                 <input
@@ -3227,6 +3378,76 @@ export function showCustomUI(player) {
                           </div>
                         ))}
                       </div>
+                    </div>
+                    
+                    {/* HUD Options (Actionbar) */}
+                    <div className="flex flex-col gap-2 p-3 border-t border-zinc-800">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={v.hud?.enabled || false}
+                          onChange={(e) => {
+                            const newVars = [...variables];
+                            newVars[i].hud = { ...(newVars[i].hud || { style: "text", color: "§f" }), enabled: e.target.checked };
+                            setVariables(newVars);
+                          }}
+                          className="accent-[#3498db]"
+                        />
+                        <span className="text-[10px] font-bold text-zinc-500 uppercase">
+                          Show on HUD (Actionbar)
+                        </span>
+                      </div>
+                      {v.hud?.enabled && (
+                         <div className="flex flex-col gap-2 bg-[#181818] p-2 rounded border border-[#2a2a2a] mt-1">
+                            <div className="flex gap-2">
+                                <select
+                                 value={v.hud.style}
+                                 onChange={(e) => {
+                                    const newVars = [...variables];
+                                    newVars[i].hud!.style = e.target.value as VariableHUD["style"];
+                                    setVariables(newVars);
+                                 }}
+                                 className="bg-zinc-950 border border-zinc-800 text-xs p-1.5 rounded text-white outline-none focus:border-[#007acc] flex-1"
+                               >
+                                  <option value="text">Text (e.g. Mana: 10)</option>
+                                  <option value="bar">Pipes (e.g. |||||-----)</option>
+                                  <option value="solid_bar">Solid Bar (e.g. █ █ █ ▒ ▒)</option>
+                                  <option value="squares">Squares (e.g. 🟩🟩⬛⬛)</option>
+                                  <option value="icons">Icons (e.g. ⭐⭐⭐)</option>
+                               </select>
+                               <select
+                                 value={v.hud.color}
+                                 onChange={(e) => {
+                                    const newVars = [...variables];
+                                    newVars[i].hud!.color = e.target.value;
+                                    setVariables(newVars);
+                                 }}
+                                 className="bg-zinc-950 border border-zinc-800 text-xs p-1.5 rounded text-white outline-none focus:border-[#007acc] w-24"
+                               >
+                                  <option value="§f">White</option>
+                                  <option value="§c">Red</option>
+                                  <option value="§a">Green</option>
+                                  <option value="§b">Aqua</option>
+                                  <option value="§e">Yellow</option>
+                                  <option value="§6">Gold</option>
+                                  <option value="§d">Pink</option>
+                                  <option value="§5">Purple</option>
+                               </select>
+                            </div>
+                            {v.hud.style === "icons" && (
+                               <div className="flex items-center gap-2">
+                                  <span className="text-zinc-500 text-xs text-nowrap">Icon:</span>
+                                  <input type="text" maxLength={4} value={v.hud.iconText || "⭐"} onChange={(e) => { const newVars = [...variables]; newVars[i].hud!.iconText = e.target.value; setVariables(newVars); }} className="bg-zinc-950 border border-zinc-800 p-1 flex-1 text-white text-xs rounded outline-none focus:border-[#007acc]" />
+                               </div>
+                            )}
+                            {["bar", "solid_bar", "squares"].includes(v.hud.style) && v.max === null && (
+                               <div className="flex items-center gap-2">
+                                  <span className="text-zinc-500 text-xs text-nowrap">Max Value:</span>
+                                  <input type="number" value={v.hud.maxOverride || 100} onChange={(e) => { const newVars = [...variables]; newVars[i].hud!.maxOverride = parseFloat(e.target.value); setVariables(newVars); }} className="bg-zinc-950 border border-zinc-800 p-1 flex-1 text-white text-xs rounded outline-none focus:border-[#007acc]" />
+                               </div>
+                            )}
+                         </div>
+                      )}
                     </div>
                   </div>
                 </div>
