@@ -1948,6 +1948,40 @@ export function showCustomUI(player) {
                   boxShadow: "inset 2px 2px 0 rgba(255,255,255,0.6), inset -2px -2px 0 rgba(80,80,80,0.4), 0 10px 30px rgba(0,0,0,0.5)"
                 }}
               >
+                {/* Absolutely Positioned Panels Overlay */}
+                {elements
+                  .filter((e) => e.type === "panel")
+                  .map((el) => (
+                    <div
+                      key={el.id}
+                      onPointerDown={(e) => handlePointerDown(e, el.id)}
+                      className={`absolute cursor-move transition-opacity ${
+                        selectedId === el.id
+                          ? "outline outline-4 outline-offset-1 outline-blue-500 z-50"
+                          : "z-10"
+                      } ${draggedLayerId === el.id ? "opacity-30 border-dashed border-2 border-zinc-400" : ""}`}
+                      style={{
+                        left: el.x,
+                        top: el.y,
+                        width: el.width,
+                        height: el.height,
+                      }}
+                    >
+                      {el.props.texture ? (
+                        <img
+                          src={el.props.texture.startsWith("http") ? el.props.texture : `/${el.props.texture}`}
+                          className="w-full h-full object-fill pointer-events-none"
+                          style={{ imageRendering: "pixelated" }}
+                          onError={(e) => (e.currentTarget.style.display = 'none')}
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-black/20 border-2 border-dashed border-zinc-500 flex items-center justify-center text-zinc-700 font-bold pointer-events-none">
+                          {el.name}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
                 {/* Title (First Label acts as Title) */}
                 {elements.filter((e) => e.type === "label").length > 0 && (
                   <div
@@ -2196,6 +2230,38 @@ export function showCustomUI(player) {
                           Minecraft Bedrock generated forms are strictly governed by the game engine. Custom positioning (X, Y) and sizing (Width, Height) are not supported with Script API. The preview reflects realistic form grouping.
                         </div>
                       </div>
+
+                      {selectedElement.type === "panel" && (
+                        <div className="flex flex-col gap-2">
+                          <span className="text-[10px] font-bold text-zinc-500 uppercase">
+                            Dimensions (HUD overlay use only)
+                          </span>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="flex flex-col gap-1.5">
+                              <label className="text-[10px] text-zinc-400">
+                                Width
+                              </label>
+                              <input
+                                type="number"
+                                value={selectedElement.width}
+                                onChange={(e) => setElements(elements.map(el => el.id === selectedId ? { ...el, width: parseInt(e.target.value) || 0 } : el))}
+                                className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-[11px] outline-none text-white focus:border-blue-500"
+                              />
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                              <label className="text-[10px] text-zinc-400">
+                                Height
+                              </label>
+                              <input
+                                type="number"
+                                value={selectedElement.height}
+                                onChange={(e) => setElements(elements.map(el => el.id === selectedId ? { ...el, height: parseInt(e.target.value) || 0 } : el))}
+                                className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-[11px] outline-none text-white focus:border-blue-500"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       <div className="h-[1px] bg-zinc-800 w-full" />
 
