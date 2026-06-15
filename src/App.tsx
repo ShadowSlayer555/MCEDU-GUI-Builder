@@ -35,7 +35,6 @@ import {
 } from "lucide-react";
 
 type ElementType =
-  | "panel"
   | "button"
   | "label"
   | "image"
@@ -339,16 +338,6 @@ export default function App() {
         name: "Main GUI",
         slideType: initialType,
         elements: [
-          {
-            id: Math.random().toString(36).substr(2, 9),
-            type: "panel",
-            x: 200,
-            y: 150,
-            width: 400,
-            height: 220,
-            name: "Main Background",
-            props: { texture: "textures/gui/new_bg.png" },
-          },
           {
             id: Math.random().toString(36).substr(2, 9),
             type: "label",
@@ -916,13 +905,19 @@ export default function App() {
 export function showCustomUI_${slide.id}(player) {
   ${formBuilder}
 
-  form.show(player).then((response) => {
-    if (response.canceled) return;
-    
-    ${logicCode}
-    
-  }).catch(e => {
-    console.error(e);
+  system.run(() => {
+    form.show(player).then((response) => {
+      if (response.canceled && (response.cancelationReason === "UserBusy" || response.cancelationReason === "userBusy" || response.cancelationReason === "user_busy")) {
+        showCustomUI_${slide.id}(player);
+        return;
+      }
+      if (response.canceled) return;
+      
+      ${logicCode}
+      
+    }).catch(e => {
+      console.error(e);
+    });
   });
 }
 `;
@@ -1323,16 +1318,6 @@ export function showCustomUI(player) {
       elements: [
         {
           id: Math.random().toString(36).substr(2, 9),
-          type: "panel",
-          x: 200,
-          y: 150,
-          width: 400,
-          height: 220,
-          name: "Main Background",
-          props: { texture: "textures/gui/new_bg.png" },
-        },
-        {
-          id: Math.random().toString(36).substr(2, 9),
           type: "label",
           x: 200,
           y: 100,
@@ -1404,7 +1389,7 @@ export function showCustomUI(player) {
       const getCategory = (type: string) => {
         if (type === "label") return "label";
         if (["dropdown", "slider", "textfield", "toggle", "player_picker"].includes(type)) return "input";
-        if (["button", "image", "panel"].includes(type)) return "button";
+        if (["button", "image"].includes(type)) return "button";
         return "other";
       };
       
@@ -1717,12 +1702,6 @@ export function showCustomUI(player) {
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <button
-                    onClick={() => addElement("panel")}
-                    className="h-8 bg-zinc-800 border border-zinc-700 rounded flex items-center justify-center gap-2 text-xs text-zinc-300 hover:bg-zinc-700 hover:border-zinc-600 transition-colors shadow-sm cursor-pointer"
-                  >
-                    <Square className="w-3 h-3" /> Panel
-                  </button>
-                  <button
                     onClick={() => addElement("button")}
                     className="h-8 bg-zinc-800 border border-zinc-700 rounded flex items-center justify-center gap-2 text-xs text-zinc-300 hover:bg-zinc-700 hover:border-zinc-600 transition-colors shadow-sm cursor-pointer"
                   >
@@ -1839,9 +1818,6 @@ export function showCustomUI(player) {
                         className={`p-2 rounded-md flex items-center gap-2 mb-1 cursor-pointer transition-colors border shadow-sm ${selectedId === el.id ? "bg-zinc-800 border-zinc-700 text-white" : "border-transparent text-zinc-400 hover:bg-zinc-800/50"} ${draggedLayerId === el.id ? "opacity-50" : ""}`}
                       >
                         <GripVertical className="w-3 h-3 text-[#555] cursor-grab active:cursor-grabbing" />
-                        {el.type === "panel" && (
-                          <Square className="w-3 h-3 text-zinc-400" />
-                        )}
                         {el.type === "button" && (
                           <MousePointer2 className="w-3 h-3 text-zinc-400" />
                         )}
@@ -1942,46 +1918,12 @@ export function showCustomUI(player) {
               {/* Main Working Canvas */}
               <div
                 ref={canvasRef}
-                className="relative w-[340px] max-h-[460px] flex flex-col p-4 bg-[#c6c6c6] border-[3px] border-[#3E3E3E] overflow-y-auto shadow-2xl user-select-none"
+                className="relative w-[340px] flex flex-col p-4 bg-[#c6c6c6] border-[3px] border-[#3E3E3E] shadow-2xl user-select-none"
                 onPointerDown={() => setSelectedId(null)}
                 style={{
                   boxShadow: "inset 2px 2px 0 rgba(255,255,255,0.6), inset -2px -2px 0 rgba(80,80,80,0.4), 0 10px 30px rgba(0,0,0,0.5)"
                 }}
               >
-                {/* Absolutely Positioned Panels Overlay */}
-                {elements
-                  .filter((e) => e.type === "panel")
-                  .map((el) => (
-                    <div
-                      key={el.id}
-                      onPointerDown={(e) => handlePointerDown(e, el.id)}
-                      className={`absolute cursor-move transition-opacity ${
-                        selectedId === el.id
-                          ? "outline outline-4 outline-offset-1 outline-blue-500 z-50"
-                          : "z-10"
-                      } ${draggedLayerId === el.id ? "opacity-30 border-dashed border-2 border-zinc-400" : ""}`}
-                      style={{
-                        left: el.x,
-                        top: el.y,
-                        width: el.width,
-                        height: el.height,
-                      }}
-                    >
-                      {el.props.texture ? (
-                        <img
-                          src={el.props.texture.startsWith("http") ? el.props.texture : `/${el.props.texture}`}
-                          className="w-full h-full object-fill pointer-events-none"
-                          style={{ imageRendering: "pixelated" }}
-                          onError={(e) => (e.currentTarget.style.display = 'none')}
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-black/20 border-2 border-dashed border-zinc-500 flex items-center justify-center text-zinc-700 font-bold pointer-events-none">
-                          {el.name}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-
                 {/* Title (First Label acts as Title) */}
                 {elements.filter((e) => e.type === "label").length > 0 && (
                   <div
@@ -2230,38 +2172,6 @@ export function showCustomUI(player) {
                           Minecraft Bedrock generated forms are strictly governed by the game engine. Custom positioning (X, Y) and sizing (Width, Height) are not supported with Script API. The preview reflects realistic form grouping.
                         </div>
                       </div>
-
-                      {selectedElement.type === "panel" && (
-                        <div className="flex flex-col gap-2">
-                          <span className="text-[10px] font-bold text-zinc-500 uppercase">
-                            Dimensions (HUD overlay use only)
-                          </span>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="flex flex-col gap-1.5">
-                              <label className="text-[10px] text-zinc-400">
-                                Width
-                              </label>
-                              <input
-                                type="number"
-                                value={selectedElement.width}
-                                onChange={(e) => setElements(elements.map(el => el.id === selectedId ? { ...el, width: parseInt(e.target.value) || 0 } : el))}
-                                className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-[11px] outline-none text-white focus:border-blue-500"
-                              />
-                            </div>
-                            <div className="flex flex-col gap-1.5">
-                              <label className="text-[10px] text-zinc-400">
-                                Height
-                              </label>
-                              <input
-                                type="number"
-                                value={selectedElement.height}
-                                onChange={(e) => setElements(elements.map(el => el.id === selectedId ? { ...el, height: parseInt(e.target.value) || 0 } : el))}
-                                className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-[11px] outline-none text-white focus:border-blue-500"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      )}
 
                       <div className="h-[1px] bg-zinc-800 w-full" />
 
@@ -2845,7 +2755,7 @@ export function showCustomUI(player) {
                           </div>
                         )}
 
-                      {["image", "panel", "button"].includes(
+                      {["image", "button"].includes(
                         selectedElement.type,
                       ) && (
                         <div className="flex flex-col gap-2">
