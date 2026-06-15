@@ -1918,13 +1918,14 @@ export function showCustomUI(player) {
               {/* Main Working Canvas */}
               <div
                 ref={canvasRef}
-                className="relative w-[340px] flex flex-col p-4 bg-[#c6c6c6] border-[3px] border-[#3E3E3E] shadow-2xl user-select-none"
+                className="relative w-[340px] max-h-[460px] flex flex-col bg-[#c6c6c6] border-[3px] border-[#3E3E3E] shadow-2xl user-select-none overflow-hidden"
                 onPointerDown={() => setSelectedId(null)}
                 style={{
                   boxShadow: "inset 2px 2px 0 rgba(255,255,255,0.6), inset -2px -2px 0 rgba(80,80,80,0.4), 0 10px 30px rgba(0,0,0,0.5)"
                 }}
               >
-                {/* Title (First Label acts as Title) */}
+                <div className="flex flex-col p-4 w-full overflow-y-auto custom-scrollbar flex-1">
+                  {/* Title (First Label acts as Title) */}
                 {elements.filter((e) => e.type === "label").length > 0 && (
                   <div
                     draggable
@@ -2072,6 +2073,7 @@ export function showCustomUI(player) {
                         </span>
                       </div>
                     ))}
+                </div>
                 </div>
               </div>
 
