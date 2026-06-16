@@ -83,6 +83,18 @@ interface CustomTrigger {
   config: any;
 }
 
+interface ProjectData {
+  id: string;
+  name: string;
+  variables?: Variable[];
+  guiSlides: GuiSlide[];
+  customTriggers: CustomTrigger[];
+  openedFrom: "book" | "modded_item" | "hidden";
+  moddedItemName: string;
+  bookElements: ElementDef[];
+  activeSlideId: string;
+}
+
 const generateUUID = () => {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
     const r = (Math.random() * 16) | 0,
@@ -150,7 +162,11 @@ export default function App() {
   const [rpUuid1, setRpUuid1] = useState(generateUUID);
   const [rpUuid2, setRpUuid2] = useState(generateUUID);
   const [projectName, setProjectName] = useState("untitled_project");
-  const [appPhase, setAppPhase] = useState<AppPhase>("setup");
+  
+  const [projectsList, setProjectsList] = useState<ProjectData[]>([]);
+  const [activeProjectId, setActiveProjectId] = useState<string>("");
+
+  const [appPhase, setAppPhase] = useState<AppPhase | "dashboard">("setup");
   const [customTriggers, setCustomTriggers] = useState<CustomTrigger[]>([]);
   const [inGameLogs, setInGameLogs] = useState(false);
   const [openedFrom, setOpenedFrom] = useState<
@@ -246,33 +262,146 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const getActiveProjectData = (): ProjectData => ({
+    id: activeProjectId || generateUUID(),
+    name: projectName,
+    guiSlides,
+    customTriggers,
+    openedFrom,
+    moddedItemName,
+    bookElements: bookElements || [],
+    activeSlideId
+  });
+
+  const saveCurrentToList = () => {
+    setProjectsList((prev) => {
+      let pData = getActiveProjectData();
+      if (prev.length === 0) return [pData];
+      const exists = prev.some(p => p.id === pData.id);
+      if (exists) {
+        return prev.map(p => p.id === pData.id ? pData : p);
+      }
+      return [...prev, pData];
+    });
+  };
+
   const handleSaveProject = () => {
+    saveCurrentToList();
+    const isMultiOutput = projectsList.length > 1;
+    
+    // We can either export exactly the active project or the whole list.
+    // However, the standard save saves the entire multi-project array if there's more than one.
     const projectData = {
-      projectName,
-      variables,
+      isMultiProject: true,
+      projectsList: projectsList.map(p => p.id === activeProjectId ? getActiveProjectData() : p),
+      variables, // export global variables at root
       bpUuid1,
       bpUuid2,
       bpUuid3,
       rpUuid1,
       rpUuid2,
+      baseBPManifest,
+      baseRPManifest,
+      // fallback old fields
+      projectName,
       customTriggers,
       openedFrom,
       moddedItemName,
       guiSlides,
       bookElements,
-      baseBPManifest,
-      baseRPManifest,
     };
     const jsonStr = JSON.stringify(projectData, null, 2);
     const blob = new Blob([jsonStr], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${projectName.replace(/[^a-z0-9_-]/gi, '_')}.json`;
+    a.download = `${isMultiOutput ? "merged_gui_workspace" : projectName.replace(/[^a-z0-9_-]/gi, '_')}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  const loadProjectData = (data: any) => {
+    if (data.bpUuid1) setBpUuid1(data.bpUuid1);
+    if (data.bpUuid2) setBpUuid2(data.bpUuid2);
+    if (data.bpUuid3) setBpUuid3(data.bpUuid3);
+    if (data.rpUuid1) setRpUuid1(data.rpUuid1);
+    if (data.rpUuid2) setRpUuid2(data.rpUuid2);
+    if (data.baseBPManifest !== undefined)
+      setBaseBPManifest(data.baseBPManifest);
+    if (data.baseRPManifest !== undefined)
+      setBaseRPManifest(data.baseRPManifest);
+
+    let incomingList: ProjectData[] = [];
+    let incomingVars: Variable[] = data.variables || [];
+    
+    if (data.isMultiProject && data.projectsList) {
+       incomingList = data.projectsList;
+       // Extract any old project-level variables just in case
+       incomingList.forEach(p => {
+         if (p.variables) {
+            p.variables.forEach((v: Variable) => {
+                if (!incomingVars.some(iv => iv.name === v.name)) {
+                   incomingVars.push(v);
+                }
+            });
+         }
+       });
+    } else {
+       // Single legacy format
+       let parsedSlides: GuiSlide[] = data.guiSlides || [];
+       if (!data.guiSlides && data.guiElements) {
+         const hasInputs = data.guiElements.some((el: any) =>
+           ["dropdown", "slider", "textfield", "toggle", "player_picker"].includes(el.type),
+         );
+         const numLabels = data.guiElements.filter((el: any) => el.type === "label").length;
+         parsedSlides = [{
+           id: "main",
+           name: "Main GUI",
+           slideType: !hasInputs && numLabels > 1 ? "text_display" : "interactive",
+           elements: data.guiElements,
+         }];
+       }
+       if (parsedSlides.length === 0) {
+         parsedSlides = [{
+            id: "main",
+            name: "Main Screen",
+            slideType: "interactive",
+            elements: []
+         }];
+       }
+
+       incomingList = [{
+         id: generateUUID(),
+         name: data.projectName || "imported_project",
+         guiSlides: parsedSlides,
+         customTriggers: data.customTriggers || [],
+         openedFrom: data.openedFrom || "book",
+         moddedItemName: data.moddedItemName || "my_mod:magic_wand",
+         bookElements: data.bookElements || [],
+         activeSlideId: parsedSlides[0]?.id || "main"
+       }];
+    }
+
+    setProjectsList(prev => {
+       const newList = [...prev, ...incomingList];
+       return newList;
+    });
+    
+    setVariables(prev => {
+       const newVars = [...prev];
+       incomingVars.forEach(iv => {
+           if (!newVars.some(v => v.name === iv.name)) {
+               newVars.push(iv);
+           }
+       });
+       return newVars;
+    });
+
+    if (appPhase !== "dashboard") {
+       setAppPhase("dashboard");
+    }
   };
 
   const handleLoadProject = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -282,42 +411,7 @@ export default function App() {
       reader.onload = (e) => {
         try {
           const data = JSON.parse(e.target?.result as string);
-          if (data.projectName) setProjectName(data.projectName);
-          if (data.variables) setVariables(data.variables);
-          if (data.bpUuid1) setBpUuid1(data.bpUuid1);
-          if (data.bpUuid2) setBpUuid2(data.bpUuid2);
-          if (data.bpUuid3) setBpUuid3(data.bpUuid3);
-          if (data.rpUuid1) setRpUuid1(data.rpUuid1);
-          if (data.rpUuid2) setRpUuid2(data.rpUuid2);
-          if (data.customTriggers) setCustomTriggers(data.customTriggers);
-          if (data.openedFrom) setOpenedFrom(data.openedFrom);
-          if (data.moddedItemName) setModdedItemName(data.moddedItemName);
-          
-          if (data.guiSlides) {
-            setGuiSlides(data.guiSlides);
-            setActiveSlideId(data.guiSlides[0]?.id || "main");
-          } else if (data.guiElements) {
-            const hasInputs = data.guiElements.some((el: any) =>
-              ["dropdown", "slider", "textfield", "toggle", "player_picker"].includes(el.type),
-            );
-            const numLabels = data.guiElements.filter((el: any) => el.type === "label").length;
-            setGuiSlides([
-              {
-                id: "main",
-                name: "Main GUI",
-                slideType: !hasInputs && numLabels > 1 ? "text_display" : "interactive",
-                elements: data.guiElements,
-              },
-            ]);
-            setActiveSlideId("main");
-          }
-          
-          if (data.bookElements) setBookElements(data.bookElements);
-          if (data.baseBPManifest !== undefined)
-            setBaseBPManifest(data.baseBPManifest);
-          if (data.baseRPManifest !== undefined)
-            setBaseRPManifest(data.baseRPManifest);
-          setAppPhase("builder");
+          loadProjectData(data);
         } catch (err) {
           alert("Failed to load project: Invalid file format.");
         }
@@ -327,6 +421,20 @@ export default function App() {
     if (event.target) {
       event.target.value = "";
     }
+  };
+
+  const openProject = (projId: string) => {
+    const p = projectsList.find(p => p.id === projId);
+    if (!p) return;
+    setActiveProjectId(p.id);
+    setProjectName(p.name);
+    setGuiSlides(p.guiSlides || []);
+    setCustomTriggers(p.customTriggers || []);
+    setOpenedFrom(p.openedFrom || "book");
+    setModdedItemName(p.moddedItemName || "my_mod:magic_wand");
+    setBookElements(p.bookElements || []);
+    setActiveSlideId(p.activeSlideId || p.guiSlides[0]?.id || "main");
+    setAppPhase("builder");
   };
 
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -724,16 +832,31 @@ export default function App() {
         const resolveAmount = (amountVal: number | string) => {
           if (typeof amountVal === "number") return `(${amountVal})`;
           if (typeof amountVal === "string") {
-            if (amountVal.startsWith("{") && amountVal.endsWith("}")) {
-              const name = amountVal.slice(1, -1);
+            let isNegative = false;
+            let strippedAmount = amountVal;
+            if (strippedAmount.startsWith("-")) {
+              isNegative = true;
+              strippedAmount = strippedAmount.substring(1);
+            }
+            
+            if (strippedAmount.startsWith("{") && strippedAmount.endsWith("}")) {
+              const name = strippedAmount.slice(1, -1);
               const elIndex = inputs.findIndex(
                 (i) => (i.props.text || i.name) === name,
               );
-              if (elIndex >= 0)
-                return `(parseFloat(formValues[${elIndex}]) || 0)`;
-
-              const v = variables.find((v) => v.name === name);
-              if (v) return `getVar("${v.scope}", "${v.name}", ${targetName})`;
+              
+              let valExp = "";
+              if (elIndex >= 0) {
+                valExp = `(parseFloat(formValues[${elIndex}]) || 0)`;
+              } else {
+                const v = variables.find((v) => v.name === name);
+                if (v) {
+                  valExp = `getVar("${v.scope}", "${v.name}", ${targetName})`;
+                } else {
+                  valExp = "0";
+                }
+              }
+              return isNegative ? `-(${valExp})` : `(${valExp})`;
             }
             return `(${parseFloat(amountVal) || 0})`;
           }
@@ -908,7 +1031,7 @@ export function showCustomUI_${slide.id}(player) {
   system.run(() => {
     form.show(player).then((response) => {
       if (response.canceled && (response.cancelationReason === "UserBusy" || response.cancelationReason === "userBusy" || response.cancelationReason === "user_busy")) {
-        showCustomUI_${slide.id}(player);
+        system.runTimeout(() => { showCustomUI_${slide.id}(player); }, 5);
         return;
       }
       if (response.canceled) return;
@@ -947,7 +1070,7 @@ export function showCustomUI_${slide.id}(player) {
   world.afterEvents.playerSpawn.subscribe((event) => {
     const player = event.player;
     if (player.getDynamicProperty("${LAST_CHECKED}") === undefined) {
-      player.setDynamicProperty("${LAST_CHECKED}", player.totalXp);
+      player.setDynamicProperty("${LAST_CHECKED}", player.getTotalXp());
     }
   });
 
@@ -955,11 +1078,11 @@ export function showCustomUI_${slide.id}(player) {
     for (const player of world.getAllPlayers()) {
       let lastCheckedXp = player.getDynamicProperty("${LAST_CHECKED}");
       if (lastCheckedXp === undefined) {
-        player.setDynamicProperty("${LAST_CHECKED}", player.totalXp);
+        player.setDynamicProperty("${LAST_CHECKED}", player.getTotalXp());
         continue;
       }
       
-      const currentXp = player.totalXp;
+      const currentXp = player.getTotalXp();
       const xpGained = currentXp - lastCheckedXp;
       const threshold = ${THRESHOLD};
       
@@ -1535,6 +1658,15 @@ export function showCustomUI(player) {
                 <Terminal className="w-3.5 h-3.5" />{" "}
                 {inGameLogs ? "Ingame Logs: ON" : "Ingame Logs: OFF"}
               </button>
+              
+              {projectsList.length > 0 && (
+                <button
+                  onClick={() => { saveCurrentToList(); setAppPhase("dashboard"); }}
+                  className="px-3 py-1.5 bg-zinc-800 text-white text-[11px] border border-zinc-700 font-bold uppercase rounded hover:bg-zinc-700 transition-colors flex items-center gap-1.5 shadow-sm ml-2"
+                >
+                   Return to Dashboard
+                </button>
+              )}
               <button
                 onClick={() => {
                   let allCode =
@@ -1689,6 +1821,122 @@ export function showCustomUI(player) {
                 >
                   Create Text Display GUI<br/><span className="text-[10px] opacity-75 font-normal">(Multiple Text Blocks)</span>
                 </button>
+              </div>
+            </div>
+          </div>
+        ) : appPhase === "dashboard" ? (
+          <div className="flex-1 flex flex-col bg-[#121212] p-8 overflow-y-auto w-full">
+            <div className="max-w-4xl w-full mx-auto">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold uppercase tracking-wider text-white">
+                  Workspace Dashboard
+                </h2>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                       saveCurrentToList();
+                       setAppPhase("setup");
+                       setActiveProjectId("");
+                       setProjectName("untitled_project");
+                       // do not reset variables, they are workspace-wide
+                       setGuiSlides([]);
+                       setBookElements([]);
+                       setCustomTriggers([]);
+                    }}
+                    className="px-4 py-2 bg-zinc-800 text-zinc-200 text-xs font-bold uppercase rounded hover:bg-zinc-700 transition-colors shadow-sm"
+                  >
+                    + New Project
+                  </button>
+                  <button
+                    onClick={() => {
+                        // Merge all projects
+                        if (projectsList.length === 0) return;
+                        
+                        let mergedSlides: GuiSlide[] = [];
+                        let mergedCustomTriggers: CustomTrigger[] = [];
+                        let mergedBookElements: ElementDef[] = [];
+                        
+                        projectsList.forEach((proj, idx) => {
+                            mergedSlides = [...mergedSlides, ...(proj.guiSlides||[])];
+                            mergedCustomTriggers = [...mergedCustomTriggers, ...(proj.customTriggers||[])];
+                            mergedBookElements = [...mergedBookElements, ...(proj.bookElements||[])];
+                        });
+                        
+                        // Create Hub Slide to link to all other GUI's first slides
+                        const hubSlideId = "slide_" + generateUUID().split("-")[0];
+                        const hubSlide: GuiSlide = {
+                           id: hubSlideId,
+                           name: "Workspace Hub",
+                           slideType: "interactive",
+                           elements: [
+                              {
+                                 id: generateUUID(),
+                                 type: "label",
+                                 name: "Hub Title",
+                                 props: { text: "§lWorkspace Hub§r\\nSelect a project GUI to open:" },
+                                 x: 0, y: 0
+                              },
+                              ...projectsList.map((p, idx) => ({
+                                 id: generateUUID(),
+                                 type: "button",
+                                 name: p.name || `Project ${idx + 1}`,
+                                 props: { 
+                                     text: p.name || `Project ${idx + 1}`, 
+                                     action: p.guiSlides?.[0]?.id ? `open_form_${p.guiSlides[0].id}` : "",
+                                     style: "default"
+                                 },
+                                 x: 0, y: (idx + 1) * 30
+                              } as any))
+                           ]
+                        };
+                        
+                        mergedSlides = [hubSlide, ...mergedSlides];
+                        
+                        setActiveProjectId("MERGED");
+                        setProjectName("Merged_Mod");
+                        setVariables(mergedVariables);
+                        setGuiSlides(mergedSlides);
+                        setCustomTriggers(mergedCustomTriggers);
+                        setBookElements(mergedBookElements);
+                        setOpenedFrom("modded_item"); // force multiple starting points or command start?
+                        setModdedItemName("my_mod:gui_orb");
+                        setAppPhase("builder");
+                        setViewMode("export");
+                    }}
+                    className="px-4 py-2 bg-[#3498db] text-white text-xs font-bold uppercase rounded hover:bg-[#2980b9] transition-colors shadow-sm"
+                  >
+                    Export All (Merged Mod)
+                  </button>
+                </div>
+              </div>
+              <p className="text-zinc-500 text-sm mb-6">
+                Manage all GUI projects within your workspace. When you export, all projects will be merged into a single behavior/resource pack so they work together inside Minecraft without conflicts.
+              </p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {projectsList.map(p => (
+                  <div key={p.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-5 shadow-lg relative group transition-colors hover:border-zinc-700 cursor-pointer" onClick={() => openProject(p.id)}>
+                    <div className="flex items-start justify-between mb-3">
+                      <h3 className="text-white font-bold text-lg truncate pr-4">{p.name || "Untitled"}</h3>
+                      {activeProjectId === p.id && (
+                        <span className="bg-blue-500 text-white text-[9px] uppercase font-bold px-1.5 py-0.5 rounded shadow">Active</span>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-1 text-xs text-zinc-400">
+                      <span>Slides: {p.guiSlides?.length || 0}</span>
+                      <span>Variables: {p.variables?.length || 0}</span>
+                      <span>Triggers: {p.customTriggers?.length || 0}</span>
+                    </div>
+                    <div className="mt-4 flex items-center justify-between border-t border-zinc-800 pt-3">
+                      <span className="text-[10px] uppercase font-mono text-zinc-600 bg-zinc-950 px-2 py-1 rounded">
+                         opened via: {p.openedFrom}
+                      </span>
+                      <button className="text-[10px] uppercase font-bold text-blue-400 hover:text-blue-300">
+                        Edit
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -2243,78 +2491,83 @@ export function showCustomUI(player) {
                           )}
 
                           {selectedElement.type === "slider" && (
-                            <div className="grid grid-cols-2 gap-2 mt-1">
-                              <div className="flex flex-col gap-1">
-                                <label className="text-[9px] text-zinc-500">
-                                  Min Value
-                                </label>
-                                <input
-                                  type="number"
-                                  value={selectedElement.props.sliderMin || "0"}
-                                  onChange={(e) =>
-                                    updateSelectedProp(
-                                      "sliderMin",
-                                      e.target.value,
-                                    )
-                                  }
-                                  className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
-                                />
+                            <>
+                              <div className="grid grid-cols-2 gap-2 mt-1">
+                                <div className="flex flex-col gap-1">
+                                  <label className="text-[9px] text-zinc-500">
+                                    Min Value
+                                  </label>
+                                  <input
+                                    type="number"
+                                    value={selectedElement.props.sliderMin || "0"}
+                                    onChange={(e) =>
+                                      updateSelectedProp(
+                                        "sliderMin",
+                                        e.target.value,
+                                      )
+                                    }
+                                    className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+                                  />
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                  <label className="text-[9px] text-zinc-500">
+                                    Max Value
+                                  </label>
+                                  <input
+                                    type="number"
+                                    value={
+                                      selectedElement.props.sliderMax || "100"
+                                    }
+                                    onChange={(e) =>
+                                      updateSelectedProp(
+                                        "sliderMax",
+                                        e.target.value,
+                                      )
+                                    }
+                                    className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+                                  />
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                  <label className="text-[9px] text-zinc-500">
+                                    Step Size
+                                  </label>
+                                  <input
+                                    type="number"
+                                    value={
+                                      selectedElement.props.sliderStep || "1"
+                                    }
+                                    onChange={(e) =>
+                                      updateSelectedProp(
+                                        "sliderStep",
+                                        e.target.value,
+                                      )
+                                    }
+                                    className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+                                  />
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                  <label className="text-[9px] text-zinc-500">
+                                    Default Value
+                                  </label>
+                                  <input
+                                    type="number"
+                                    value={
+                                      selectedElement.props.sliderDefault || "0"
+                                    }
+                                    onChange={(e) =>
+                                      updateSelectedProp(
+                                        "sliderDefault",
+                                        e.target.value,
+                                      )
+                                    }
+                                    className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+                                  />
+                                </div>
                               </div>
-                              <div className="flex flex-col gap-1">
-                                <label className="text-[9px] text-zinc-500">
-                                  Max Value
-                                </label>
-                                <input
-                                  type="number"
-                                  value={
-                                    selectedElement.props.sliderMax || "100"
-                                  }
-                                  onChange={(e) =>
-                                    updateSelectedProp(
-                                      "sliderMax",
-                                      e.target.value,
-                                    )
-                                  }
-                                  className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
-                                />
-                              </div>
-                              <div className="flex flex-col gap-1">
-                                <label className="text-[9px] text-zinc-500">
-                                  Step Size
-                                </label>
-                                <input
-                                  type="number"
-                                  value={
-                                    selectedElement.props.sliderStep || "1"
-                                  }
-                                  onChange={(e) =>
-                                    updateSelectedProp(
-                                      "sliderStep",
-                                      e.target.value,
-                                    )
-                                  }
-                                  className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
-                                />
-                              </div>
-                              <div className="flex flex-col gap-1">
-                                <label className="text-[9px] text-zinc-500">
-                                  Default Value
-                                </label>
-                                <input
-                                  type="number"
-                                  value={
-                                    selectedElement.props.sliderDefault || "0"
-                                  }
-                                  onChange={(e) =>
-                                    updateSelectedProp(
-                                      "sliderDefault",
-                                      e.target.value,
-                                    )
-                                  }
-                                  className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
-                                />
-                              </div>
-                            </div>
+                              <p className="text-[9px] text-zinc-500 mt-2 leading-relaxed">
+                                You can use this slider's value as a variable! For example, set a button action's variable increment to <code className="text-zinc-300">{"{SliderName}"}</code> or <code className="text-zinc-300">{"-{SliderName}"}</code> to change a player's variable based on this slider. (Replace SliderName with this slider's title, no spaces).
+                              </p>
+                            </>
                           )}
 
                           {selectedElement.type === "textfield" && (
@@ -3274,7 +3527,7 @@ export function showCustomUI(player) {
                               >
                                 {MC_EVENTS.map((evt) => (
                                   <option key={evt} value={evt}>
-                                    {evt}
+                                    {evt === "xpGained" ? "XP Gained" : (evt === "custom_item" ? "Item Used" : evt === "complex_script" ? "Complex Script" : evt)}
                                   </option>
                                 ))}
                               </select>
@@ -3309,7 +3562,7 @@ export function showCustomUI(player) {
                                 <input
                                   type="number"
                                   min="1"
-                                  placeholder="25"
+                                  placeholder="1"
                                   value={inc.xpThreshold || 1}
                                   onChange={(e) => {
                                     const newVars = [...variables];
