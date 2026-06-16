@@ -1,0 +1,629 @@
+764-          e.type,
+765-        ),
+766-      );
+767-      const buttons = slide.elements.filter((e) => e.type === "button");
+768-      const labels = slide.elements.filter((e) => e.type === "label");
+769:      const inputs = slide.elements.filter((e) =>
+770-        ["dropdown", "slider", "textfield", "toggle", "player_picker"].includes(
+771-          e.type,
+772-        ),
+773-      );
+774-
+--
+839-              strippedAmount = strippedAmount.substring(1);
+840-            }
+841-            
+842-            if (strippedAmount.startsWith("{") && strippedAmount.endsWith("}")) {
+843-              const name = strippedAmount.slice(1, -1);
+844:              const elIndex = inputs.findIndex(
+845-                (i) => (i.props.text || i.name) === name,
+846-              );
+847-              
+848-              let valExp = "";
+849-              if (elIndex >= 0) {
+--
+893-          .join("\n      ");
+894-        return code;
+895-      };
+896-
+897-      if (isModal) {
+898:        if (inputs.some((i) => i.type === "player_picker")) {
+899-          formBuilder =
+900-            `const allPlayers = world.getAllPlayers();\n  const playerNames = allPlayers.length > 0 ? allPlayers.map(p => p.name) : ["No players online"];\n  ` +
+901-            formBuilder;
+902-        }
+903-
+904:        const formFields = inputs
+905:          .map((input, index) => {
+906:            const name = input.props.text || input.name;
+907-            
+908:            if (input.type === "dropdown") {
+909-              const options = (
+910:                input.props.dropdownOptions || "Option 1, Option 2"
+911-              )
+912-                .split(",")
+913-                .map((o) => `"${o.trim()}"`)
+914-                .join(", ");
+915:              const defaultIdx = input.props.dropdownDefault || "0";
+916-              return `form.dropdown(${formatString(name)}, [${options}], ${defaultIdx});`;
+917-            }
+918:            if (input.type === "player_picker") {
+919-              return `form.dropdown(${formatString(name)}, playerNames, 0);`;
+920-            }
+921:            if (input.type === "slider") {
+922:              const min = input.props.sliderMin || "0";
+923:              const max = input.props.sliderMax || "100";
+924:              const step = input.props.sliderStep || "1";
+925:              const defaultVal = input.props.sliderDefault || "0";
+926-              return `form.slider(${formatString(name)}, ${min}, ${max}, ${step}, ${defaultVal});`;
+927-            }
+928:            if (input.type === "textfield") {
+929-              const placeholder =
+930:                input.props.textFieldPlaceholder || "Placeholder";
+931:              const defaultVal = input.props.textFieldDefault || "";
+932-              const formattedDefault = defaultVal
+933-                ? `, ${formatString(defaultVal)}`
+934-                : "";
+935-              const args = `${formatString(name)}, ${formatString(placeholder)}${formattedDefault}`;
+936-              return `form.textField(${args});`;
+937-            }
+938:            if (input.type === "toggle") {
+939-              const defaultVal =
+940:                input.props.toggleDefault === "true" ? "true" : "false";
+941-              return `form.toggle(${formatString(name)}, ${defaultVal});`;
+942-            }
+943-            return "";
+944-          })
+945-          .join("\n  ");
+--
+952-        formBuilder += `\n  ${formFields}`;
+953-        formBuilder += `\n  form.submitButton("${submitText}");`;
+954-
+955-        logicCode = `const formValues = response.formValues;\n    player.sendMessage("Form submitted!");`;
+956-
+957:        inputs.forEach((input, index) => {
+958-          if (
+959:            input.type === "textfield" &&
+960:            input.props.correctAnswer &&
+961:            input.variableActions?.length
+962-          ) {
+963:            logicCode += `\n    if (formValues[${index}] === "${input.props.correctAnswer}") {`;
+964-            logicCode += `\n        player.sendMessage("§aCorrect Answer!");`;
+965:            logicCode += `\n        ${generateVarActionCode(input.variableActions)}`;
+966-            logicCode += `\n    } else { player.sendMessage("§cIncorrect Answer."); }`;
+967-          }
+968-          if (
+969:            input.type === "player_picker" &&
+970:            (input.variableActions?.length || input.variableActionsTarget?.length)
+971-          ) {
+972-            logicCode += `\n    const targetPlayerIndex_${index} = formValues[${index}];\n    const targetPlayer_${index} = allPlayers[targetPlayerIndex_${index}];`;
+973-            logicCode += `\n    if (targetPlayer_${index}) {`;
+974:            if (input.variableActions?.length) {
+975:              logicCode += `\n        ${generateVarActionCode(input.variableActions, "player")}`;
+976-            }
+977:            if (input.variableActionsTarget?.length) {
+978:              logicCode += `\n        ${generateVarActionCode(input.variableActionsTarget, `targetPlayer_${index}`)}`;
+979-            }
+980-            logicCode += `\n    }`;
+981-          }
+982-        });
+983-
+--
+1380-          alert("Interactive GUIs can only have 1 single label (the title) at the top.");
+1381-          return;
+1382-        }
+1383-      }
+1384-      if (activeSlide.slideType === "text_display" && ["dropdown", "slider", "textfield", "toggle", "player_picker"].includes(type)) {
+1385:        alert("Text Display GUIs cannot contain interactive inputs. Please add an Interactive Slide for inputs.");
+1386-        return;
+1387-      }
+1388-    }
+1389-
+1390-    const newEl: EditorElement = {
+--
+1512-      
+1513-      const elType = prev[currentIndex].type;
+1514-      
+1515-      const getCategory = (type: string) => {
+1516-        if (type === "label") return "label";
+1517:        if (["dropdown", "slider", "textfield", "toggle", "player_picker"].includes(type)) return "input";
+1518-        if (["button", "image"].includes(type)) return "button";
+1519-        return "other";
+1520-      };
+1521-      
+1522-      const myCategory = getCategory(elType);
+--
+1612-              </span>
+1613-            </nav>
+1614-          )}
+1615-        </div>
+1616-        <div className="flex items-center gap-3">
+1617:          <input
+1618-            type="file"
+1619-            accept=".json"
+1620-            style={{ display: "none" }}
+1621-            onChange={handleLoadProject}
+1622-            ref={fileInputRef}
+--
+1642-          >
+1643-            <Key className="w-4 h-4" />
+1644-          </button>
+1645-          {appPhase === "builder" && (
+1646-            <>
+1647:              <input
+1648-                type="text"
+1649-                value={projectName}
+1650-                onChange={(e) => setProjectName(e.target.value)}
+1651-                className="text-xs bg-transparent text-zinc-400 font-mono mr-4 ml-2 border-b border-transparent hover:border-zinc-700 focus:border-blue-500 outline-none px-1"
+1652-              />
+--
+1791-                {openedFrom === "modded_item" && (
+1792-                  <div className="flex flex-col gap-1.5">
+1793-                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
+1794-                      Item Identifier
+1795-                    </label>
+1796:                    <input
+1797-                      type="text"
+1798-                      value={moddedItemName}
+1799-                      onChange={(e) => setModdedItemName(e.target.value)}
+1800-                      placeholder="my_namespace:item_id"
+1801-                      className="bg-zinc-950 border border-zinc-800 px-3 py-2 rounded text-white text-sm outline-none focus:border-blue-500 font-mono"
+--
+2147-                    natively, your labels will be hidden in the exported Script
+2148-                    API code. Only the very first label will be preserved as the
+2149-                    Form Title.
+2150-                    <br />
+2151-                    <br />
+2152:                    <b>Want to show text/variables?</b> If your UI has no inputs (only buttons), it is exported as <code>ActionFormData</code> which fully supports body text! Otherwise, you can type{" "}
+2153-                    <code>{"{YourVar}"}</code> directly in the titles or
+2154-                    placeholders of Sliders, Dropdowns, and TextFields, and it
+2155-                    will automatically replace it with the live variable value!
+2156-                  </div>
+2157-                )}
+--
+2395-                        </div>
+2396-                        <div className="flex flex-col gap-1">
+2397-                          <label className="text-[9px] text-zinc-500">
+2398-                            Element Name
+2399-                          </label>
+2400:                          <input
+2401-                            type="text"
+2402-                            value={selectedElement.name}
+2403-                            onChange={(e) => {
+2404-                              setElements((prev) =>
+2405-                                prev.map((el) =>
+--
+2439-                          </span>
+2440-                          <div className="flex flex-col gap-1">
+2441-                            <label className="text-[9px] text-zinc-500">
+2442-                              Label / Button Text
+2443-                            </label>
+2444:                            <input
+2445-                              type="text"
+2446-                              value={selectedElement.props.text || ""}
+2447-                              onChange={(e) =>
+2448-                                updateSelectedProp("text", e.target.value)
+2449-                              }
+--
+2457-                          {selectedElement.type === "dropdown" && (
+2458-                            <div className="flex flex-col gap-1 mt-1">
+2459-                              <label className="text-[9px] text-zinc-500">
+2460-                                Options (comma separated)
+2461-                              </label>
+2462:                              <input
+2463-                                type="text"
+2464-                                value={
+2465-                                  selectedElement.props.dropdownOptions ||
+2466-                                  "Option 1, Option 2"
+2467-                                }
+--
+2475-                                className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+2476-                              />
+2477-                              <label className="text-[9px] text-zinc-500 mt-1">
+2478-                                Default Selected Index
+2479-                              </label>
+2480:                              <input
+2481-                                type="number"
+2482-                                value={
+2483-                                  selectedElement.props.dropdownDefault || "0"
+2484-                                }
+2485-                                onChange={(e) =>
+--
+2498-                              <div className="grid grid-cols-2 gap-2 mt-1">
+2499-                                <div className="flex flex-col gap-1">
+2500-                                  <label className="text-[9px] text-zinc-500">
+2501-                                    Min Value
+2502-                                  </label>
+2503:                                  <input
+2504-                                    type="number"
+2505-                                    value={selectedElement.props.sliderMin || "0"}
+2506-                                    onChange={(e) =>
+2507-                                      updateSelectedProp(
+2508-                                        "sliderMin",
+--
+2514-                                </div>
+2515-                                <div className="flex flex-col gap-1">
+2516-                                  <label className="text-[9px] text-zinc-500">
+2517-                                    Max Value
+2518-                                  </label>
+2519:                                  <input
+2520-                                    type="number"
+2521-                                    value={
+2522-                                      selectedElement.props.sliderMax || "100"
+2523-                                    }
+2524-                                    onChange={(e) =>
+--
+2532-                                </div>
+2533-                                <div className="flex flex-col gap-1">
+2534-                                  <label className="text-[9px] text-zinc-500">
+2535-                                    Step Size
+2536-                                  </label>
+2537:                                  <input
+2538-                                    type="number"
+2539-                                    value={
+2540-                                      selectedElement.props.sliderStep || "1"
+2541-                                    }
+2542-                                    onChange={(e) =>
+--
+2550-                                </div>
+2551-                                <div className="flex flex-col gap-1">
+2552-                                  <label className="text-[9px] text-zinc-500">
+2553-                                    Default Value
+2554-                                  </label>
+2555:                                  <input
+2556-                                    type="number"
+2557-                                    value={
+2558-                                      selectedElement.props.sliderDefault || "0"
+2559-                                    }
+2560-                                    onChange={(e) =>
+--
+2576-                          {selectedElement.type === "textfield" && (
+2577-                            <div className="flex flex-col gap-1 mt-1">
+2578-                              <label className="text-[9px] text-zinc-500">
+2579-                                Placeholder Text
+2580-                              </label>
+2581:                              <input
+2582-                                type="text"
+2583-                                value={
+2584-                                  selectedElement.props.textFieldPlaceholder ||
+2585-                                  "Placeholder"
+2586-                                }
+--
+2593-                                className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+2594-                              />
+2595-                              <label className="text-[9px] text-zinc-500 mt-1">
+2596-                                Default Value
+2597-                              </label>
+2598:                              <input
+2599-                                type="text"
+2600-                                value={
+2601-                                  selectedElement.props.textFieldDefault || ""
+2602-                                }
+2603-                                onChange={(e) =>
+--
+2609-                                className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+2610-                              />
+2611-                              <label className="text-[9px] text-zinc-500 mt-1 text-green-400">
+2612-                                Correct Answer (Trigger Actions)
+2613-                              </label>
+2614:                              <input
+2615-                                type="text"
+2616-                                value={
+2617-                                  selectedElement.props.correctAnswer || ""
+2618-                                }
+2619-                                onChange={(e) =>
+--
+2774-                                        className="bg-zinc-900 border border-zinc-700 text-white text-[9px] rounded p-1 outline-none w-14"
+2775-                                      >
+2776-                                        <option value="increment">Inc (+)</option>
+2777-                                        <option value="set">Set (=)</option>
+2778-                                      </select>
+2779:                                      <input
+2780-                                        type="text"
+2781-                                        value={act.amount}
+2782-                                        onChange={(e) => {
+2783-                                          const acts = [
+2784-                                            ...(selectedElement.variableActions ||
+--
+2825-                                      >
+2826-                                        X
+2827-                                      </button>
+2828-                                    </div>
+2829-                                    <label className="flex items-center gap-1.5 cursor-pointer mt-1">
+2830:                                      <input
+2831-                                        type="checkbox"
+2832-                                        checked={!!act.required}
+2833-                                        onChange={(e) => {
+2834-                                          const acts = [
+2835-                                            ...(selectedElement.variableActions ||
+--
+2950-                                            className="bg-zinc-900 border border-zinc-700 text-white text-[9px] rounded p-1 outline-none w-14"
+2951-                                          >
+2952-                                            <option value="increment">Inc (+)</option>
+2953-                                            <option value="set">Set (=)</option>
+2954-                                          </select>
+2955:                                          <input
+2956-                                            type="text"
+2957-                                            value={act.amount}
+2958-                                            onChange={(e) => {
+2959-                                              const acts = [
+2960-                                                ...(selectedElement.variableActionsTarget ||
+--
+3022-                          </span>
+3023-                          <div className="flex flex-col gap-1 mb-2">
+3024-                            <label className="text-[9px] text-zinc-500">
+3025-                              Bedrock Texture Path
+3026-                            </label>
+3027:                            <input
+3028-                              type="text"
+3029-                              value={selectedElement.props.texture || ""}
+3030-                              onChange={(e) =>
+3031-                                updateSelectedProp("texture", e.target.value)
+3032-                              }
+--
+3051-                            <label className="cursor-pointer bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-center text-zinc-400 hover:bg-zinc-700 hover:text-white transition-colors flex items-center justify-center gap-2">
+3052-                              <Upload className="w-3.5 h-3.5" />
+3053-                              {selectedElement.props.previewImage
+3054-                                ? "Change Image..."
+3055-                                : "Upload Image..."}
+3056:                              <input
+3057-                                type="file"
+3058-                                accept="image/*"
+3059-                                className="hidden"
+3060-                                onChange={(e) => {
+3061-                                  const file = e.target.files?.[0];
+--
+3377-                <p className="text-[10px] text-zinc-500">
+3378-                  Describe a stat or variable to track (e.g., "tracks blocks
+3379-                  broken", "tracks x axis position", "mana").
+3380-                </p>
+3381-                <div className="flex gap-2">
+3382:                  <input
+3383-                    type="text"
+3384-                    value={aiVarPrompt}
+3385-                    onChange={(e) => setAiVarPrompt(e.target.value)}
+3386-                    placeholder="E.g., Track how many times player jumps..."
+3387-                    className="bg-zinc-900 border border-zinc-700 rounded px-3 py-1.5 text-xs text-white outline-none flex-1 focus:border-purple-500"
+--
+3429-                        className="bg-zinc-950 border border-zinc-700 text-xs text-white rounded outline-none p-1.5 focus:border-[#007acc]"
+3430-                      >
+3431-                        <option value="player">Player Variable</option>
+3432-                        <option value="global">Global Variable</option>
+3433-                      </select>
+3434:                      <input
+3435-                        type="text"
+3436-                        value={v.name}
+3437-                        onChange={(e) => {
+3438-                          const newVars = [...variables];
+3439-                          newVars[i].name = e.target.value;
+--
+3456-                    <div className="flex gap-4">
+3457-                      <div className="flex flex-col gap-1">
+3458-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">
+3459-                          Minimum Value
+3460-                        </label>
+3461:                        <input
+3462-                          type="number"
+3463-                          value={v.min ?? ""}
+3464-                          className="bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-mono text-sm w-24"
+3465-                          onChange={(e) => {
+3466-                            const newVars = [...variables];
+--
+3473-                      </div>
+3474-                      <div className="flex flex-col gap-1">
+3475-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">
+3476-                          Maximum Value (Optional)
+3477-                        </label>
+3478:                        <input
+3479-                          type="number"
+3480-                          value={v.max ?? ""}
+3481-                          className="bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-mono text-sm w-24"
+3482-                          onChange={(e) => {
+3483-                            const newVars = [...variables];
+--
+3535-                                ))}
+3536-                              </select>
+3537-                              <span className="text-white text-xs font-mono font-bold">
+3538-                                BY
+3539-                              </span>
+3540:                              <input
+3541-                                type="number"
+3542-                                value={inc.amount}
+3543-                                onChange={(e) => {
+3544-                                  const newVars = [...variables];
+3545-                                  newVars[i].increments[incIdx].amount =
+--
+3560-                              </button>
+3561-                            </div>
+3562-                            {inc.event === "xpGained" && (
+3563-                              <div className="flex gap-2 items-center mt-1">
+3564-                                <span className="text-zinc-500 text-xs">Per</span>
+3565:                                <input
+3566-                                  type="number"
+3567-                                  min="1"
+3568-                                  placeholder="1"
+3569-                                  value={inc.xpThreshold || 1}
+3570-                                  onChange={(e) => {
+--
+3578-                                <span className="text-zinc-500 text-xs">XP</span>
+3579-                              </div>
+3580-                            )}
+3581-                            {inc.event === "custom_item" && (
+3582-                              <div className="flex gap-2 items-center mt-1">
+3583:                                <input
+3584-                                  type="text"
+3585-                                  placeholder="minecraft:stick"
+3586-                                  value={inc.customItemId || ""}
+3587-                                  onChange={(e) => {
+3588-                                    const newVars = [...variables];
+--
+3591-                                    setVariables(newVars);
+3592-                                  }}
+3593-                                  className="bg-zinc-950 border border-zinc-800 p-1 text-white font-mono text-xs rounded w-32 outline-none focus:border-[#007acc]"
+3594-                                />
+3595-                                <label className="flex items-center gap-1.5 text-xs text-zinc-400">
+3596:                                  <input
+3597-                                    type="checkbox"
+3598-                                    checked={!!inc.destroyItemOnUse}
+3599-                                    onChange={(e) => {
+3600-                                      const newVars = [...variables];
+3601-                                      newVars[i].increments[
+--
+3615-                    </div>
+3616-                    
+3617-                    {/* HUD Options (Actionbar) */}
+3618-                    <div className="flex flex-col gap-2 p-3 border-t border-zinc-800">
+3619-                      <div className="flex items-center gap-2">
+3620:                        <input
+3621-                          type="checkbox"
+3622-                          checked={v.hud?.enabled || false}
+3623-                          onChange={(e) => {
+3624-                            const newVars = [...variables];
+3625-                            newVars[i].hud = { ...(newVars[i].hud || { style: "text", color: "§f" }), enabled: e.target.checked };
+--
+3669-                               </select>
+3670-                            </div>
+3671-                            {v.hud.style === "icons" && (
+3672-                               <div className="flex items-center gap-2">
+3673-                                  <span className="text-zinc-500 text-xs text-nowrap">Icon:</span>
+3674:                                  <input type="text" maxLength={4} value={v.hud.iconText || "⭐"} onChange={(e) => { const newVars = [...variables]; newVars[i].hud!.iconText = e.target.value; setVariables(newVars); }} className="bg-zinc-950 border border-zinc-800 p-1 flex-1 text-white text-xs rounded outline-none focus:border-[#007acc]" />
+3675-                               </div>
+3676-                            )}
+3677-                            {["bar", "solid_bar", "squares"].includes(v.hud.style) && v.max === null && (
+3678-                               <div className="flex items-center gap-2">
+3679-                                  <span className="text-zinc-500 text-xs text-nowrap">Max Value:</span>
+3680:                                  <input type="number" value={v.hud.maxOverride || 100} onChange={(e) => { const newVars = [...variables]; newVars[i].hud!.maxOverride = parseFloat(e.target.value); setVariables(newVars); }} className="bg-zinc-950 border border-zinc-800 p-1 flex-1 text-white text-xs rounded outline-none focus:border-[#007acc]" />
+3681-                               </div>
+3682-                            )}
+3683-                         </div>
+3684-                      )}
+3685-                    </div>
+--
+3770-                        {trigger.type === "itemUse" && (
+3771-                          <>
+3772-                            <label className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">
+3773-                              Item ID
+3774-                            </label>
+3775:                            <input
+3776-                              type="text"
+3777-                              placeholder="minecraft:stick"
+3778-                              value={trigger.config.itemId || ""}
+3779-                              onChange={(e) => {
+3780-                                const newTriggers = [...customTriggers];
+--
+3788-                        {trigger.type === "blockBreak" && (
+3789-                          <>
+3790-                            <label className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">
+3791-                              Block ID
+3792-                            </label>
+3793:                            <input
+3794-                              type="text"
+3795-                              placeholder="minecraft:dirt"
+3796-                              value={trigger.config.blockId || ""}
+3797-                              onChange={(e) => {
+3798-                                const newTriggers = [...customTriggers];
+--
+3806-                        {trigger.type === "entityHit" && (
+3807-                          <>
+3808-                            <label className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">
+3809-                              Entity ID
+3810-                            </label>
+3811:                            <input
+3812-                              type="text"
+3813-                              placeholder="minecraft:cow"
+3814-                              value={trigger.config.entityId || ""}
+3815-                              onChange={(e) => {
+3816-                                const newTriggers = [...customTriggers];
+--
+3824-                        {trigger.type === "chatCommand" && (
+3825-                          <>
+3826-                            <label className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">
+3827-                              Chat Command
+3828-                            </label>
+3829:                            <input
+3830-                              type="text"
+3831-                              placeholder="!showgui"
+3832-                              value={trigger.config.command || ""}
+3833-                              onChange={(e) => {
+3834-                                const newTriggers = [...customTriggers];
+--
+4312-            </div>
+4313-            <div className="flex flex-col gap-2 mb-6">
+4314-              <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
+4315-                Gemini API Key
+4316-              </label>
+4317:              <input
+4318-                type="password"
+4319-                value={apiKey}
+4320-                onChange={(e) => saveApiKey(e.target.value)}
+4321-                placeholder="AIzaSy..."
+4322-                className="bg-zinc-950 border border-zinc-800 px-3 py-2 rounded text-white text-sm outline-none focus:border-blue-500 font-mono"
+3105-                        </div>
+3106-                        <p className="text-[9px] text-zinc-400 leading-tight">
+3107-                          Describe what this element should do. AI will generate
+3108-                          the Bedrock JSON logic bindings.
+3109-                        </p>
+3110:                        <textarea
+3111-                          value={aiPrompt}
+3112-                          onChange={(e) => setAiPrompt(e.target.value)}
+3113-                          placeholder="e.g., Increase player strength by 1 when clicked... or show player health amount"
+3114-                          className="bg-zinc-950 border border-zinc-800 rounded p-2 text-[11px] outline-none text-white focus:border-blue-500 font-sans transition-colors resize-none h-16 w-full"
+3115-                        />
+--
+3842-                        {trigger.type === "aiGenerated" && (
+3843-                          <div className="flex flex-col gap-2">
+3844-                            <label className="text-[10px] uppercase font-bold text-blue-400 tracking-wider">
+3845-                              Describe the event in plain English
+3846-                            </label>
+3847:                            <textarea
+3848-                              placeholder="When the player enters water, or when they eat an apple..."
+3849-                              value={trigger.config.prompt || ""}
+3850-                              onChange={(e) => {
+3851-                                const newTriggers = [...customTriggers];
+3852-                                newTriggers[i].config.prompt = e.target.value;
+--
+3891-                            {trigger.config.code && (
+3892-                              <div className="mt-2">
+3893-                                <label className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">
+3894-                                  Generated Code
+3895-                                </label>
+3896:                                <textarea
+3897-                                  readOnly
+3898-                                  value={trigger.config.code}
+3899-                                  className="w-full bg-[#1e1e1e] border border-zinc-800 px-2 py-1 text-green-400 text-[11px] font-mono rounded min-h-[100px] mt-1 custom-scrollbar"
+3900:                                ></textarea>
+3901-                              </div>
+3902-                            )}
+3903-                          </div>
+3904-                        )}
+3905-                      </div>
+--
+4108-                <div className="p-4 bg-zinc-900 border-b border-zinc-800">
+4109-                  <label className="text-xs text-zinc-500 block mb-2 font-bold uppercase">
+4110-                    Base BP Manifest (Paste your un-modded manifest here to
+4111-                    inject scripts/dependencies)
+4112-                  </label>
+4113:                  <textarea
+4114-                    className="w-full h-32 bg-zinc-950 border border-zinc-700 p-2 text-[#dcdcaa] font-mono text-[11px] outline-none rounded focus:border-[#3498db]"
+4115-                    value={baseBPManifest}
+4116-                    onChange={(e) => setBaseBPManifest(e.target.value)}
+4117-                    placeholder="Paste your original behaviour pack manifest.json here..."
+4118:                  ></textarea>
+4119-                </div>
+4120-              )}
+4121-              {selectedFile === "RP/manifest.json" && (
+4122-                <div className="p-4 bg-zinc-900 border-b border-zinc-800">
+4123-                  <label className="text-xs text-zinc-500 block mb-2 font-bold uppercase">
+4124-                    Base RP Manifest (Paste your un-modded manifest here)
+4125-                  </label>
+4126:                  <textarea
+4127-                    className="w-full h-32 bg-zinc-950 border border-zinc-700 p-2 text-[#dcdcaa] font-mono text-[11px] outline-none rounded focus:border-[#3498db]"
+4128-                    value={baseRPManifest}
+4129-                    onChange={(e) => setBaseRPManifest(e.target.value)}
+4130-                    placeholder="Paste your original resource pack manifest.json here..."
+4131:                  ></textarea>
+4132-                </div>
+4133-              )}
+4134-
+4135-              <div className="bg-[#3a2a1a] border-b border-[#dd9b3b] text-[#ffd9a3] p-3 text-xs leading-relaxed">
+4136-                <div className="font-bold flex items-center gap-1.5 mb-1">

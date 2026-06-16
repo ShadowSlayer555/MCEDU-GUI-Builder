@@ -91,7 +91,7 @@ interface ProjectData {
   customTriggers: CustomTrigger[];
   openedFrom: "book" | "modded_item" | "hidden";
   moddedItemName: string;
-  bookElements: ElementDef[];
+  bookElements: EditorElement[];
   activeSlideId: string;
 }
 
@@ -153,6 +153,57 @@ interface Variable {
   increments: VariableIncrement[];
   hud?: VariableHUD;
 }
+
+const VariableHighlightInput = ({ value, onChange, placeholder, className, variablesList = [], ...props }: any) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  
+  const handleScroll = (e: React.UIEvent<HTMLInputElement>) => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    }
+  };
+
+  const valStr = (value || "").toString();
+
+  // We place the input FIRST (z-10) and the overlay SECOND (z-20 pointer-events-none).
+  // The overlay has the exact same padding, font, and text-align as the input.
+  return (
+    <div className={`relative overflow-hidden ${className}`} style={{ padding: 0 }}>
+      {/* Actual input layer (white text) */}
+      <input
+        type="text"
+        value={value}
+        onChange={onChange}
+        onScroll={handleScroll}
+        spellCheck={false}
+        placeholder={placeholder}
+        className="block w-full h-full bg-transparent px-2 py-1.5 font-mono text-[11px] outline-none z-10 relative text-white caret-white"
+        {...props}
+      />
+      {/* Overlay highlight layer - intercepts variables and colors them blue */}
+      <div 
+         ref={scrollRef}
+         aria-hidden="true"
+         className="absolute top-0 left-0 right-0 bottom-0 pointer-events-none px-2 py-1.5 font-mono text-[11px] whitespace-pre overflow-hidden z-20 flex items-center"
+      >
+        {!valStr ? null : (
+           valStr.split(/(\{.*?\})/g).map((part: string, i: number) => {
+             if (part.startsWith('{') && part.endsWith('}')) {
+                 const varName = part.substring(1, part.length - 1);
+                 const isValid = variablesList.some((v: any) => v.name === varName);
+                 if (isValid) {
+                     return <span key={i} className="text-[#60a5fa] bg-[#3b82f6]/30 font-bold rounded-[2px]" style={{ padding: '0 1px', margin: '0 -1px' }}>{part}</span>;
+                 }
+                 // If invalid, keep it red/transparent to indicate it wasn't captured, but let's just make it transparent as regular text
+                 return <span key={i} className="text-transparent">{part}</span>;
+             }
+             return <span key={i} className="text-transparent">{part}</span>;
+           })
+        )}
+      </div>
+    </div>
+  );
+};
 
 export default function App() {
   const [variables, setVariables] = useState<Variable[]>([]);
@@ -383,6 +434,60 @@ export default function App() {
          activeSlideId: parsedSlides[0]?.id || "main"
        }];
     }
+
+    const allAvailableVars = [...variables, ...incomingVars];
+
+    incomingVars.forEach(iv => {
+        if (!iv.id) iv.id = generateUUID();
+        if (iv.increments) {
+            iv.increments = iv.increments.filter(inc => MC_EVENTS.includes(inc.event));
+        }
+    });
+
+    // Cleanup deprecated/invalid fields
+    incomingList.forEach(p => {
+        if (p.customTriggers) {
+             const validTriggerTypes = ["itemUse", "blockBreak", "entityHit", "chatCommand", "aiGenerated"];
+             p.customTriggers = p.customTriggers.filter(t => validTriggerTypes.includes(t.type));
+        }
+
+        p.guiSlides.forEach((slide: GuiSlide) => {
+            slide.elements.forEach(el => {
+                if (el.props.boundVariable) {
+                    let matchedVar = allAvailableVars.find(v => v.id === el.props.boundVariable || v.name === el.props.boundVariable);
+                    if (!matchedVar) {
+                        delete el.props.boundVariable;
+                    } else {
+                        el.props.boundVariable = matchedVar.id;
+                    }
+                }
+                
+                if (el.variableActions) {
+                     el.variableActions = el.variableActions.filter(act => {
+                         let matchedVar = allAvailableVars.find(v => v.id === act.varId || v.name === act.varId);
+                         if (!matchedVar) return false;
+                         act.varId = matchedVar.id;
+                         return true;
+                     });
+                     if (el.variableActions.length === 0) {
+                        delete el.variableActions;
+                     }
+                }
+
+                if (el.variableActionsTarget) {
+                    el.variableActionsTarget = el.variableActionsTarget.filter(act => {
+                        let matchedVar = allAvailableVars.find(v => v.id === act.varId || v.name === act.varId);
+                        if (!matchedVar) return false;
+                        act.varId = matchedVar.id;
+                        return true;
+                    });
+                    if (el.variableActionsTarget.length === 0) {
+                       delete el.variableActionsTarget;
+                    }
+                }
+            });
+        });
+    });
 
     setProjectsList(prev => {
        const newList = [...prev, ...incomingList];
@@ -1040,6 +1145,9 @@ export function showCustomUI_${slide.id}(player) {
       
     }).catch(e => {
       console.error(e);
+      if (e && e.message && /busy/i.test(e.message)) {
+        system.runTimeout(() => { showCustomUI_${slide.id}(player); }, 5);
+      }
     });
   });
 }
@@ -1854,7 +1962,7 @@ export function showCustomUI(player) {
                         
                         let mergedSlides: GuiSlide[] = [];
                         let mergedCustomTriggers: CustomTrigger[] = [];
-                        let mergedBookElements: ElementDef[] = [];
+                        let mergedBookElements: EditorElement[] = [];
                         
                         projectsList.forEach((proj, idx) => {
                             mergedSlides = [...mergedSlides, ...(proj.guiSlides||[])];
@@ -1894,7 +2002,6 @@ export function showCustomUI(player) {
                         
                         setActiveProjectId("MERGED");
                         setProjectName("Merged_Mod");
-                        setVariables(mergedVariables);
                         setGuiSlides(mergedSlides);
                         setCustomTriggers(mergedCustomTriggers);
                         setBookElements(mergedBookElements);
@@ -2438,13 +2545,13 @@ export function showCustomUI(player) {
                             <label className="text-[9px] text-zinc-500">
                               Label / Button Text
                             </label>
-                            <input
-                              type="text"
+                            <VariableHighlightInput
+                              variablesList={variables}
                               value={selectedElement.props.text || ""}
-                              onChange={(e) =>
+                              onChange={(e: any) =>
                                 updateSelectedProp("text", e.target.value)
                               }
-                              className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-green-400 focus:border-green-500 font-mono transition-colors w-full"
+                              className="bg-zinc-950 border border-zinc-800 rounded focus-within:border-green-500 transition-colors w-full"
                             />
                             <div className="text-[9px] text-zinc-500 mt-0.5">
                               Tip: You can display a variable's value by wrapping its name in braces, e.g. <span className="font-mono text-zinc-400">{"{cash}"}</span>
@@ -2456,20 +2563,20 @@ export function showCustomUI(player) {
                               <label className="text-[9px] text-zinc-500">
                                 Options (comma separated)
                               </label>
-                              <input
-                                type="text"
+                              <VariableHighlightInput
+                                variablesList={variables}
                                 value={
                                   selectedElement.props.dropdownOptions ||
                                   "Option 1, Option 2"
                                 }
-                                onChange={(e) =>
+                                onChange={(e: any) =>
                                   updateSelectedProp(
                                     "dropdownOptions",
                                     e.target.value,
                                   )
                                 }
                                 placeholder="Item 1, Item 2, Item 3"
-                                className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+                                className="bg-zinc-950 border border-zinc-800 rounded focus-within:border-blue-500 w-full"
                               />
                               <label className="text-[9px] text-zinc-500 mt-1">
                                 Default Selected Index
@@ -2575,52 +2682,52 @@ export function showCustomUI(player) {
                               <label className="text-[9px] text-zinc-500">
                                 Placeholder Text
                               </label>
-                              <input
-                                type="text"
+                              <VariableHighlightInput
+                                variablesList={variables}
                                 value={
                                   selectedElement.props.textFieldPlaceholder ||
                                   "Placeholder"
                                 }
-                                onChange={(e) =>
+                                onChange={(e: any) =>
                                   updateSelectedProp(
                                     "textFieldPlaceholder",
                                     e.target.value,
                                   )
                                 }
-                                className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+                                className="bg-zinc-950 border border-zinc-800 rounded focus-within:border-blue-500 w-full"
                               />
                               <label className="text-[9px] text-zinc-500 mt-1">
                                 Default Value
                               </label>
-                              <input
-                                type="text"
+                              <VariableHighlightInput
+                                variablesList={variables}
                                 value={
                                   selectedElement.props.textFieldDefault || ""
                                 }
-                                onChange={(e) =>
+                                onChange={(e: any) =>
                                   updateSelectedProp(
                                     "textFieldDefault",
                                     e.target.value,
                                   )
                                 }
-                                className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-[11px] outline-none text-white focus:border-blue-500 font-mono w-full"
+                                className="bg-zinc-950 border border-zinc-800 rounded focus-within:border-blue-500 w-full"
                               />
                               <label className="text-[9px] text-zinc-500 mt-1 text-green-400">
                                 Correct Answer (Trigger Actions)
                               </label>
-                              <input
-                                type="text"
+                              <VariableHighlightInput
+                                variablesList={variables}
                                 value={
                                   selectedElement.props.correctAnswer || ""
                                 }
-                                onChange={(e) =>
+                                onChange={(e: any) =>
                                   updateSelectedProp(
                                     "correctAnswer",
                                     e.target.value,
                                   )
                                 }
                                 placeholder="Case sensitive string..."
-                                className="bg-zinc-950 border border-green-900 rounded px-2 py-1.5 text-[11px] outline-none text-green-400 focus:border-green-500 font-mono w-full"
+                                className="bg-zinc-950 border border-green-900 rounded focus-within:border-green-500 w-full"
                               />
                             </div>
                           )}
@@ -2773,20 +2880,16 @@ export function showCustomUI(player) {
                                         <option value="increment">Inc (+)</option>
                                         <option value="set">Set (=)</option>
                                       </select>
-                                      <input
-                                        type="text"
+                                      <VariableHighlightInput
+                                        variablesList={variables}
                                         value={act.amount}
-                                        onChange={(e) => {
+                                        onChange={(e: any) => {
                                           const acts = [
                                             ...(selectedElement.variableActions ||
                                               []),
                                           ];
                                           const val = e.target.value;
-                                          acts[idx].amount =
-                                            isNaN(Number(val)) ||
-                                            val.trim() === ""
-                                              ? val
-                                              : parseFloat(val);
+                                          acts[idx].amount = val;
                                           setElements((prev) =>
                                             prev.map((el) =>
                                               el.id === selectedId
@@ -2798,7 +2901,7 @@ export function showCustomUI(player) {
                                             ),
                                           );
                                         }}
-                                        className="bg-zinc-900 border border-zinc-700 text-[10px] text-white rounded p-1 w-12 text-center"
+                                        className="bg-zinc-900 border border-zinc-700 rounded w-[60px]"
                                       />
                                       <button
                                         onClick={() => {
@@ -2949,20 +3052,16 @@ export function showCustomUI(player) {
                                             <option value="increment">Inc (+)</option>
                                             <option value="set">Set (=)</option>
                                           </select>
-                                          <input
-                                            type="text"
+                                          <VariableHighlightInput
+                                            variablesList={variables}
                                             value={act.amount}
-                                            onChange={(e) => {
+                                            onChange={(e: any) => {
                                               const acts = [
                                                 ...(selectedElement.variableActionsTarget ||
                                                   []),
                                               ];
                                               const val = e.target.value;
-                                              acts[idx].amount =
-                                                isNaN(Number(val)) ||
-                                                val.trim() === ""
-                                                  ? val
-                                                  : parseFloat(val);
+                                              acts[idx].amount = val;
                                               setElements((prev) =>
                                                 prev.map((el) =>
                                                   el.id === selectedId
@@ -2975,7 +3074,7 @@ export function showCustomUI(player) {
                                                 ),
                                               );
                                             }}
-                                            className="bg-[#2a1a0f] border border-[#5a3a14] text-[10px] text-orange-300 rounded p-1 w-12 text-center"
+                                            className="bg-[#2a1a0f] border border-[#5a3a14] rounded w-[60px]"
                                           />
                                           <button
                                             onClick={() => {
