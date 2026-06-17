@@ -464,6 +464,7 @@ export default function App() {
                 
                 if (el.variableActions) {
                      el.variableActions = el.variableActions.filter(act => {
+                         if (act.varId.startsWith("_NAV_")) return true;
                          let matchedVar = allAvailableVars.find(v => v.id === act.varId || v.name === act.varId);
                          if (!matchedVar) return false;
                          act.varId = matchedVar.id;
@@ -476,6 +477,7 @@ export default function App() {
 
                 if (el.variableActionsTarget) {
                     el.variableActionsTarget = el.variableActionsTarget.filter(act => {
+                        if (act.varId.startsWith("_NAV_")) return true;
                         let matchedVar = allAvailableVars.find(v => v.id === act.varId || v.name === act.varId);
                         if (!matchedVar) return false;
                         act.varId = matchedVar.id;
@@ -1318,7 +1320,7 @@ ${hudVariables.map(v => {
             if (t.type === "entityHit")
               return `try {\n  world.afterEvents.entityHitEntity.subscribe((event) => {\n    if (event.hitEntity.typeId === "${t.config.entityId || "minecraft:cow"}" && event.damagingEntity.typeId === "minecraft:player") {\n      system.runTimeout(() => { showCustomUI(event.damagingEntity); }, 20);\n    }\n  });\n} catch(e) { console.error(e); }`;
             if (t.type === "chatCommand")
-              return `try {\n  world.beforeEvents.chatSend.subscribe((event) => {\n    if (event.message === "${t.config.command || "!showgui"}") {\n      event.cancel = true;\n      system.runTimeout(() => { showCustomUI(event.sender); }, 20);\n    }\n  });\n} catch(e) { console.error(e); }`;
+              return `try {\n  world.beforeEvents.chatSend.subscribe((event) => {\n    if (event.message.trim().toLowerCase() === "${(t.config.command || "!showgui").trim().toLowerCase()}") {\n      event.cancel = true;\n      system.runTimeout(() => { showCustomUI(event.sender); }, 20);\n    }\n  });\n} catch(e) { console.error(e); }`;
             if (t.type === "aiGenerated") {
               const safeCode = (t.config.code?.replace(/\n/g, "\n  ") || "// Not generated yet").replace(/import\s+[\s\S]*?from\s+['"][^'"]+['"];?/g, '');
               return `try {\n  // AI Generated code from prompt: "${t.config.prompt}"\n  ${safeCode}\n} catch(e) { console.error(e); }`;
